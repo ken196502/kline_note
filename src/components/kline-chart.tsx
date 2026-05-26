@@ -63,7 +63,7 @@ export function KLineChart({ symbol, stockName }: KLineChartProps) {
 
     // 设置数据加载器
     chart.setDataLoader({
-      getBars: async ({ callback }) => {
+      getBars: async ({ callback }: { callback: (data: any[]) => void }) => {
         try {
           const res = await fetch(`/api/kline?symbol=${currentSymbol}&limit=120`, {
             signal: abortControllerRef.current?.signal,
