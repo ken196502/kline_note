@@ -3,43 +3,29 @@
 import { useBlockHistory } from "@/hooks/use-block-history";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetDescription,
+} from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
-import { ChevronDown, TrendingUp, Calendar, RefreshCw } from "lucide-react";
+import { ChevronRight, TrendingUp, Calendar, RefreshCw, X } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import { zhCN } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
+import { BlockStockList } from "@/components/block-stock-list";
+import type { BlockData, StockData } from "@/types/block-data";
 
 export default function BlockHistoryPage() {
   const { data, loading, error, hasMore, loadMore } = useBlockHistory(5);
-  const [expandedBlocks, setExpandedBlocks] = useState<Set<string>>(new Set());
-
-  const toggleBlock = (key: string) => {
-    setExpandedBlocks((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) {
-        next.delete(key);
-      } else {
-        next.add(key);
-      }
-      return next;
-    });
-  };
+  const [selectedBlock, setSelectedBlock] = useState<{
+    block: BlockData;
+    stocks: StockData[];
+  } | null>(null);
 
   const formatDate = (dateStr: string) => {
     try {
@@ -50,6 +36,10 @@ export default function BlockHistoryPage() {
     } catch {
       return dateStr;
     }
+  };
+
+  const handleBlockClick = (block: BlockData, stocks: StockData[]) => {
+    setSelectedBlock({ block, stocks });
   };
 
   return (
@@ -111,173 +101,75 @@ export default function BlockHistoryPage() {
                 </Badge>
               </div>
 
-              {/* Blocks */}
-              <div className="space-y-3">
+              {/* Blocks Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {dayData.blocks.map((block) => {
-                  const blockKey = `${dayData.date}-${block.code}`;
-                  const isExpanded = expandedBlocks.has(blockKey);
                   const blockStocks = dayData.stocks.filter(
                     (s) => s.blockCode === block.code
                   );
 
                   return (
-                    <Collapsible
-                      key={blockKey}
-                      open={isExpanded}
-                      onOpenChange={() => toggleBlock(blockKey)}
+                    <Card
+                      key={`${dayData.date}-${block.code}`}
+                      className="overflow-hidden border-0 shadow-lg shadow-slate-900/5 bg-white/80 backdrop-blur-sm hover:shadow-xl hover:shadow-orange-500/10 transition-all duration-300 cursor-pointer group"
+                      onClick={() => handleBlockClick(block, blockStocks)}
                     >
-                      <Card className="overflow-hidden border-0 shadow-lg shadow-slate-900/5 bg-white/80 backdrop-blur-sm hover:shadow-xl transition-shadow duration-300">
-                        <CollapsibleTrigger asChild>
-                          <div className="px-6 py-4 cursor-pointer hover:bg-slate-50/50 transition-colors">
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-4">
-                                <div className="flex flex-col">
-                                  <span className="font-bold text-lg text-slate-900">
-                                    {block.name}
-                                  </span>
-                                  <span className="text-xs text-slate-400 font-mono">
-                                    {block.code}
-                                  </span>
-                                </div>
-                                <div className="flex items-center gap-3">
-                                  <Badge
-                                    variant="default"
-                                    className="bg-orange-500 hover:bg-orange-600 text-white font-semibold px-3 py-1"
-                                  >
-                                    {block.limitUpNum} 涨停
-                                  </Badge>
-                                  {block.continuousPlateNum > 0 && (
-                                    <Badge
-                                      variant="outline"
-                                      className="border-red-200 text-red-700 bg-red-50"
-                                    >
-                                      连板 {block.continuousPlateNum}
-                                    </Badge>
-                                  )}
-                                  {block.high && block.high !== "0" && (
-                                    <Badge
-                                      variant="outline"
-                                      className="border-purple-200 text-purple-700 bg-purple-50"
-                                    >
-                                      高度 {block.high}
-                                    </Badge>
-                                  )}
-                                </div>
-                              </div>
-                              <div className="flex items-center gap-3">
-                                <div className="text-right">
-                                  <div className="text-sm text-slate-500">板块涨幅</div>
-                                  <div
-                                    className={cn(
-                                      "font-bold text-lg",
-                                      block.change > 0
-                                        ? "text-red-600"
-                                        : block.change < 0
-                                        ? "text-green-600"
-                                        : "text-slate-600"
-                                    )}
-                                  >
-                                    {block.change > 0 ? "+" : ""}
-                                    {block.change.toFixed(2)}%
-                                  </div>
-                                </div>
-                                <ChevronDown
-                                  className={cn(
-                                    "w-5 h-5 text-slate-400 transition-transform duration-300",
-                                    isExpanded && "rotate-180"
-                                  )}
-                                />
-                              </div>
+                      <div className="px-5 py-4">
+                        <div className="flex items-start justify-between mb-3">
+                          <div className="flex-1">
+                            <div className="font-bold text-lg text-slate-900 group-hover:text-orange-600 transition-colors">
+                              {block.name}
+                            </div>
+                            <div className="text-xs text-slate-400 font-mono mt-0.5">
+                              {block.code}
                             </div>
                           </div>
-                        </CollapsibleTrigger>
-                        <CollapsibleContent>
-                          <div className="border-t border-slate-100">
-                            <Table>
-                              <TableHeader>
-                                <TableRow className="bg-slate-50/50 hover:bg-slate-50/50">
-                                  <TableHead className="font-semibold text-slate-600">
-                                    股票名称
-                                  </TableHead>
-                                  <TableHead className="text-right font-semibold text-slate-600">
-                                    最新价
-                                  </TableHead>
-                                  <TableHead className="text-right font-semibold text-slate-600">
-                                    涨幅
-                                  </TableHead>
-                                  <TableHead className="text-right font-semibold text-slate-600">
-                                    板数
-                                  </TableHead>
-                                  <TableHead className="text-right font-semibold text-slate-600">
-                                    首次涨停
-                                  </TableHead>
-                                  <TableHead className="text-right font-semibold text-slate-600">
-                                    最后涨停
-                                  </TableHead>
-                                  <TableHead className="font-semibold text-slate-600">
-                                    涨停原因
-                                  </TableHead>
-                                </TableRow>
-                              </TableHeader>
-                              <TableBody>
-                                {blockStocks.map((stock) => (
-                                  <TableRow
-                                    key={stock.code}
-                                    className="hover:bg-orange-50/50 transition-colors"
-                                  >
-                                    <TableCell>
-                                      <div className="flex flex-col gap-0.5">
-                                        <span className="font-semibold text-slate-900">
-                                          {stock.name}
-                                        </span>
-                                        <span className="text-xs text-slate-400 font-mono">
-                                          {stock.code}
-                                        </span>
-                                      </div>
-                                    </TableCell>
-                                    <TableCell className="text-right font-mono font-medium">
-                                      {stock.latest.toFixed(2)}
-                                    </TableCell>
-                                    <TableCell className="text-right">
-                                      <span className="font-bold text-red-600">
-                                        {stock.changeRate > 0 ? "+" : ""}
-                                        {stock.changeRate.toFixed(2)}%
-                                      </span>
-                                    </TableCell>
-                                    <TableCell className="text-right">
-                                      <Badge
-                                        variant="outline"
-                                        className={cn(
-                                          "font-semibold",
-                                          stock.continueNum >= 3
-                                            ? "border-red-300 text-red-700 bg-red-50"
-                                            : "border-slate-200 text-slate-600"
-                                        )}
-                                      >
-                                        {stock.high || `${stock.continueNum}板`}
-                                      </Badge>
-                                    </TableCell>
-                                    <TableCell className="text-right text-sm text-slate-500 font-mono">
-                                      {stock.firstLimitUpTime || "-"}
-                                    </TableCell>
-                                    <TableCell className="text-right text-sm text-slate-500 font-mono">
-                                      {stock.lastLimitUpTime || "-"}
-                                    </TableCell>
-                                    <TableCell>
-                                      {stock.reasonInfo && (
-                                        <span className="text-xs text-slate-600 line-clamp-2">
-                                          {stock.reasonInfo}
-                                        </span>
-                                      )}
-                                    </TableCell>
-                                  </TableRow>
-                                ))}
-                              </TableBody>
-                            </Table>
+                          <ChevronRight className="w-5 h-5 text-slate-300 group-hover:text-orange-500 transition-colors" />
+                        </div>
+
+                        <div className="flex items-center gap-2 mb-3">
+                          <Badge
+                            variant="default"
+                            className="bg-orange-500 hover:bg-orange-600 text-white font-semibold px-2.5 py-1 text-xs"
+                          >
+                            {block.limitUpNum} 涨停
+                          </Badge>
+                          {block.continuousPlateNum > 0 && (
+                            <Badge
+                              variant="outline"
+                              className="border-red-200 text-red-700 bg-red-50 text-xs"
+                            >
+                              连板 {block.continuousPlateNum}
+                            </Badge>
+                          )}
+                          {block.high && block.high !== "0" && (
+                            <Badge
+                              variant="outline"
+                              className="border-purple-200 text-purple-700 bg-purple-50 text-xs"
+                            >
+                              {block.high}
+                            </Badge>
+                          )}
+                        </div>
+
+                        <div className="flex items-center justify-between pt-2 border-t border-slate-100">
+                          <span className="text-xs text-slate-500">板块涨幅</span>
+                          <div
+                            className={cn(
+                              "font-bold text-sm",
+                              block.change > 0
+                                ? "text-red-600"
+                                : block.change < 0
+                                ? "text-green-600"
+                                : "text-slate-600"
+                            )}
+                          >
+                            {block.change > 0 ? "+" : ""}
+                            {block.change.toFixed(2)}%
                           </div>
-                        </CollapsibleContent>
-                      </Card>
-                    </Collapsible>
+                        </div>
+                      </div>
+                    </Card>
                   );
                 })}
               </div>
@@ -287,17 +179,15 @@ export default function BlockHistoryPage() {
 
         {/* Loading State */}
         {loading && (
-          <div className="mt-6 space-y-3">
-            {Array.from({ length: 3 }).map((_, i) => (
-              <Card key={i} className="p-6">
-                <div className="flex items-center justify-between">
-                  <div className="space-y-2">
-                    <Skeleton className="h-6 w-32" />
-                    <Skeleton className="h-4 w-24" />
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Skeleton className="h-6 w-20" />
+          <div className="mt-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <Card key={i} className="p-5">
+                <div className="space-y-3">
+                  <Skeleton className="h-6 w-32" />
+                  <Skeleton className="h-4 w-20" />
+                  <div className="flex gap-2">
                     <Skeleton className="h-6 w-16" />
+                    <Skeleton className="h-6 w-12" />
                   </div>
                 </div>
               </Card>
@@ -306,9 +196,7 @@ export default function BlockHistoryPage() {
         )}
 
         {/* Load More Trigger */}
-        <div
-          className="mt-8 py-8 flex justify-center"
-        >
+        <div className="mt-8 py-8 flex justify-center">
           {hasMore && !loading && (
             <Button
               onClick={loadMore}
@@ -336,6 +224,18 @@ export default function BlockHistoryPage() {
           </div>
         )}
       </main>
+
+      {/* Stock List Sheet */}
+      <Sheet open={!!selectedBlock} onOpenChange={(open) => !open && setSelectedBlock(null)}>
+        <SheetContent side="right" className="w-full sm:max-w-2xl p-0">
+          {selectedBlock && (
+            <BlockStockList
+              block={selectedBlock.block}
+              stocks={selectedBlock.stocks}
+            />
+          )}
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }
