@@ -1,18 +1,30 @@
 "use client";
 
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { useBlockHistory } from "@/hooks/use-block-history";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import { ChevronRight, TrendingUp, Calendar, RefreshCw } from "lucide-react";
+import { ChevronRight, TrendingUp, Calendar, RefreshCw, LogOut } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import { zhCN } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
+import { useAuth } from "@/hooks/use-auth";
 
 export default function BlockHistoryPage() {
+  const router = useRouter();
   const { data, loading, error, hasMore, loadMore } = useBlockHistory(5);
+  const { authenticated, username, loading: authLoading, logout } = useAuth();
+
+  // 未登录时跳转
+  useEffect(() => {
+    if (!authLoading && !authenticated) {
+      router.push("/");
+    }
+  }, [authLoading, authenticated, router]);
 
   const formatDate = (dateStr: string) => {
     try {
@@ -44,13 +56,26 @@ export default function BlockHistoryPage() {
                 </p>
               </div>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-3">
               <Badge variant="outline" className="px-3 py-1.5 bg-white border-slate-200">
                 <Calendar className="w-3.5 h-3.5 mr-1.5 text-orange-600" />
                 {data.length > 0
                   ? `${data.length} 天数据`
                   : "加载中..."}
               </Badge>
+              {authenticated && username && (
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-slate-500">{username}</span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={logout}
+                    className="text-slate-400 hover:text-red-500"
+                  >
+                    <LogOut className="w-4 h-4" />
+                  </Button>
+                </div>
+              )}
             </div>
           </div>
         </div>

@@ -1,10 +1,12 @@
 "use client";
 
 import { use, useState, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Table,
   TableBody,
@@ -13,12 +15,14 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { ArrowLeft, TrendingUp, RefreshCw, Clock } from "lucide-react";
+import { ArrowLeft, TrendingUp, RefreshCw, Clock, X, Save, StickyNote } from "lucide-react";
 import Link from "next/link";
 import { format, parseISO } from "date-fns";
 import { zhCN } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import type { BlockData, StockData } from "@/types/block-data";
+import { useAuth } from "@/hooks/use-auth";
+import { useNotes } from "@/hooks/use-notes";
 
 interface DayBlockData {
   date: string;
@@ -43,18 +47,46 @@ async function fetchBlockDetail(
   return response.json();
 }
 
+interface NoteDrawerState {
+  open: boolean;
+  stockCode: string;
+  stockName: string;
+  stockDate: string;
+  content: string;
+  originalContent: string;
+}
+
 export default function BlockDetailPage({
   params,
 }: {
   params: Promise<{ code: string }>;
 }) {
   const { code } = use(params);
+  const router = useRouter();
   const [data, setData] = useState<DayBlockData[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [error, setError] = useState<Error | null>(null);
   const [hasMore, setHasMore] = useState(true);
   const [blockName, setBlockName] = useState("");
+
+  const { authenticated, loading: authLoading } = useAuth();
+  const { fetchNote, saveNote, saving } = useNotes();
+  const [drawer, setDrawer] = useState<NoteDrawerState>({
+    open: false,
+    stockCode: "",
+    stockName: "",
+    stockDate: "",
+    content: "",
+    originalContent: "",
+  });
+
+  // 未登录时跳转
+  useEffect(() => {
+    if (!authLoading && !authenticated) {
+      router.push("/");
+    }
+  }, [authLoading, authenticated, router]);
 
   // 初始加载
   useEffect(() => {
@@ -98,6 +130,42 @@ export default function BlockDetailPage({
       return dateStr;
     }
   };
+
+  // 点击股票打开备注drawer
+  const handleStockClick = async (stock: StockData, date: string) => {
+    const existingNote = await fetchNote(stock.code, date);
+    setDrawer({
+      open: true,
+      stockCode: stock.code,
+      stockName: stock.name,
+      stockDate: date,
+      content: existingNote || "",
+      originalContent: existingNote || "",
+    });
+  };
+
+  const handleSave = async () => {
+    const success = await saveNote(
+      drawer.stockCode,
+      drawer.stockDate,
+      drawer.content
+    );
+    if (success) {
+      setDrawer((prev) => ({ ...prev, open: false }));
+    }
+  };
+
+  const handleCancel = () => {
+    setDrawer((prev) => ({ ...prev, open: false }));
+  };
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 via-orange-50/30 to-slate-100">
+        <div className="w-10 h-10 border-4 border-slate-200 border-t-orange-500 rounded-full animate-spin" />
+      </div>
+    );
+  }
 
   if (isLoading) {
     return (
@@ -226,16 +294,20 @@ export default function BlockDetailPage({
                     {dayData.stocks.map((stock) => (
                       <TableRow
                         key={stock.code}
-                        className="hover:bg-orange-50/50 transition-colors"
+                        className="hover:bg-orange-50/50 transition-colors cursor-pointer"
+                        onClick={() => handleStockClick(stock, dayData.date)}
                       >
                         <TableCell className="pl-5 py-3">
-                          <div className="flex flex-col gap-0.5">
-                            <span className="font-semibold text-slate-900 text-sm">
-                              {stock.name}
-                            </span>
-                            <span className="text-[11px] text-slate-400 font-mono">
-                              {stock.code}
-                            </span>
+                          <div className="flex items-center gap-2">
+                            <StickyNote className="w-3.5 h-3.5 text-slate-300 flex-shrink-0" />
+                            <div className="flex flex-col gap-0.5">
+                              <span className="font-semibold text-slate-900 text-sm">
+                                {stock.name}
+                              </span>
+                              <span className="text-[11px] text-slate-400 font-mono">
+                                {stock.code}
+                              </span>
+                            </div>
                           </div>
                         </TableCell>
                         <TableCell className="text-right font-mono font-medium text-sm">
@@ -312,6 +384,91 @@ export default function BlockDetailPage({
           )}
         </div>
       </main>
+
+      {/* Note Drawer - Bottom Sheet */}
+      <div
+        className={cn(
+          "fixed inset-0 z-[100] transition-all duration-300",
+          drawer.open ? "visible" : "invisible"
+        )}
+      >
+        {/* Backdrop */}
+        <div
+          className={cn(
+            "absolute inset-0 bg-black/40 transition-opacity duration-300",
+            drawer.open ? "opacity-100" : "opacity-0"
+          )}
+          onClick={handleCancel}
+        />
+
+        {/* Drawer */}
+        <div
+          className={cn(
+            "absolute bottom-0 left-0 right-0 bg-white rounded-t-2xl shadow-2xl transition-transform duration-300 max-h-[70vh] flex flex-col",
+            drawer.open ? "translate-y-0" : "translate-y-full"
+          )}
+        >
+          {/* Drawer Header */}
+          <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+            <div className="flex items-center gap-3">
+              <div className="p-1.5 bg-orange-100 rounded-lg">
+                <StickyNote className="w-4 h-4 text-orange-600" />
+              </div>
+              <div>
+                <div className="font-semibold text-slate-900 text-sm">
+                  {drawer.stockName}
+                </div>
+                <div className="text-xs text-slate-400 font-mono">
+                  {drawer.stockCode} · {drawer.stockDate}
+                </div>
+              </div>
+            </div>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-slate-400 hover:text-slate-600"
+              onClick={handleCancel}
+            >
+              <X className="w-4 h-4" />
+            </Button>
+          </div>
+
+          {/* Drawer Content */}
+          <div className="flex-1 overflow-y-auto p-5">
+            <Textarea
+              placeholder="添加备注..."
+              value={drawer.content}
+              onChange={(e) =>
+                setDrawer((prev) => ({ ...prev, content: e.target.value }))
+              }
+              className="min-h-[150px] resize-none border-slate-200 focus:border-orange-300 focus:ring-orange-200 text-sm"
+            />
+          </div>
+
+          {/* Drawer Footer */}
+          <div className="flex items-center justify-end gap-3 px-5 py-4 border-t border-slate-100 bg-slate-50/50">
+            <Button
+              variant="outline"
+              onClick={handleCancel}
+              className="px-6"
+            >
+              取消
+            </Button>
+            <Button
+              onClick={handleSave}
+              disabled={saving}
+              className="px-6 bg-gradient-to-r from-orange-500 to-red-600 hover:from-orange-600 hover:to-red-700 text-white"
+            >
+              {saving ? (
+                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin mr-2" />
+              ) : (
+                <Save className="w-4 h-4 mr-2" />
+              )}
+              保存
+            </Button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
