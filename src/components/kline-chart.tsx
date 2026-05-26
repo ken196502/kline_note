@@ -142,7 +142,7 @@ export function KLineChart({ symbol, stockName }: KLineChartProps) {
           <span className="text-xs text-slate-400">加载K线数据...</span>
         )}
       </div>
-      <div className="flex-1 relative min-h-[400px]">
+      <div className="flex-1 relative min-h-0">
         {loading && (
           <div className="absolute inset-0 z-10 flex items-center justify-center bg-white">
             <Skeleton className="w-full h-full" />

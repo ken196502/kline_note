@@ -872,7 +872,7 @@ export default function BlockDetailPage() {
           {selectedStock ? (
             <>
               {/* 上 - 分时缩略图（放大展示） */}
-              <div className="flex-1 flex items-center justify-center p-4 border-b border-slate-200">
+              <div className="h-32 shrink-0 flex items-center justify-center p-2 border-b border-slate-200 overflow-hidden">
                 {selectedStock.timePreview && selectedStock.timePreview.length > 0 ? (
                   <TimePreviewChartLarge data={selectedStock.timePreview} />
                 ) : (
@@ -882,7 +882,7 @@ export default function BlockDetailPage() {
 
               {/* 中 - 备注（分隔带，点击编辑） */}
               <div
-                className="h-28 border-b border-slate-200 px-3 py-2 cursor-pointer hover:bg-slate-50/50 transition-colors flex flex-col"
+                className="h-28 shrink-0 border-b border-slate-200 px-3 py-2 cursor-pointer hover:bg-slate-50/50 transition-colors flex flex-col overflow-hidden"
                 onClick={() => {
                   if (selectedStock) {
                     openNoteDrawer(
@@ -910,8 +910,8 @@ export default function BlockDetailPage() {
                 </div>
               </div>
 
-              {/* 下 - K线图（主要空间） */}
-              <div className="flex-[3] overflow-hidden">
+              {/* 下 - K线图（置底，不被压缩） */}
+              <div className="flex-1 min-h-0 overflow-hidden">
                 <KLineChart
                   symbol={selectedSymbol}
                   stockName={selectedStock.name}
@@ -939,7 +939,7 @@ export default function BlockDetailPage() {
               </SheetHeader>
 
               {/* 上 - 分时缩略图（放大展示） */}
-              <div className="h-40 flex items-center justify-center p-4 border-b border-slate-200">
+              <div className="h-32 shrink-0 flex items-center justify-center p-2 border-b border-slate-200 overflow-hidden">
                 {selectedStock.timePreview && selectedStock.timePreview.length > 0 ? (
                   <TimePreviewChartLarge data={selectedStock.timePreview} />
                 ) : (
@@ -949,7 +949,7 @@ export default function BlockDetailPage() {
 
               {/* 中 - 备注（点击编辑） */}
               <div
-                className="h-24 border-b border-slate-200 px-3 py-2 cursor-pointer hover:bg-slate-50/50 transition-colors flex flex-col"
+                className="h-24 shrink-0 border-b border-slate-200 px-3 py-2 cursor-pointer hover:bg-slate-50/50 transition-colors flex flex-col overflow-hidden"
                 onClick={() => {
                   if (selectedStock) {
                     openNoteDrawer(
@@ -972,8 +972,8 @@ export default function BlockDetailPage() {
                 </div>
               </div>
 
-              {/* 下 - K线图（主要空间） */}
-              <div className="flex-1 overflow-hidden">
+              {/* 下 - K线图（置底，不被压缩） */}
+              <div className="flex-1 min-h-0 overflow-hidden">
                 <KLineChart
                   symbol={selectedSymbol}
                   stockName={selectedStock.name}
