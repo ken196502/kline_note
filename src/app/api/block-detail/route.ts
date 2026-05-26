@@ -6,11 +6,11 @@ import {
   transformBlockData,
   transformStockData,
 } from "@/lib/block-api";
-import { getPrevTradingDay, isHoliday } from "@/lib/trading-day";
+import { getPrevTradingDay, isHoliday, getRecentTradingDays } from "@/lib/trading-day";
 import { getSupabaseClient } from "@/storage/database/supabase-client";
 
-// 异步更新分时图数据（带延迟防封）
-async function asyncUpdateTimePreview(stocks: StockData[], date: string) {
+// 异步更新分时图数据（带延迟防封）- fire and forget
+function scheduleTimePreviewUpdate(stocks: StockData[], date: string) {
   // 只处理没有timePreview的股票
   const stocksWithoutPreview = stocks.filter(s => !s.timePreview);
   if (stocksWithoutPreview.length === 0) return;
@@ -18,13 +18,11 @@ async function asyncUpdateTimePreview(stocks: StockData[], date: string) {
   // 异步执行，不阻塞响应
   (async () => {
     try {
-      // 获取该日期涨停池数据（含分时图）
       const poolData = await fetchLimitUpPoolFromApi(date);
       
       if (poolData.status_code === 0 && poolData.data?.info) {
         const client = getSupabaseClient();
         
-        // 创建股票代码到分时数据的映射
         const timePreviewMap = new Map<string, number[]>();
         for (const stockInfo of poolData.data.info) {
           if (stockInfo.time_preview && stockInfo.time_preview.length > 0) {
@@ -32,7 +30,6 @@ async function asyncUpdateTimePreview(stocks: StockData[], date: string) {
           }
         }
 
-        // 批量更新数据库
         for (const stock of stocksWithoutPreview) {
           const timePreview = timePreviewMap.get(stock.code);
           if (timePreview) {
@@ -42,7 +39,7 @@ async function asyncUpdateTimePreview(stocks: StockData[], date: string) {
               .eq("block_code", stock.blockCode)
               .eq("stock_code", stock.code);
             
-            // 延迟防封，每次更新后等待1-2秒
+            // 延迟防封
             const delay = 1000 + Math.random() * 1000;
             await new Promise(resolve => setTimeout(resolve, delay));
           }
@@ -64,52 +61,81 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Missing block code" }, { status: 400 });
   }
 
-  let currentDate = startDate || new Date().toISOString().split("T")[0];
-
-  // 如果当前日期是节假日，往前找最近的交易日
-  while (isHoliday(new Date(currentDate))) {
-    currentDate = getPrevTradingDay(currentDate);
+  // 计算起始日期（跳过节假日）
+  let startFromDate = startDate || new Date().toISOString().split("T")[0];
+  while (isHoliday(new Date(startFromDate))) {
+    startFromDate = getPrevTradingDay(startFromDate);
   }
 
+  // 生成工作日序列（排除节假日）
+  const tradingDays = getRecentTradingDays(startFromDate, days * 2);
+
   const client = getSupabaseClient();
+
+  // 批量查询数据库中该板块已有的日期数据
+  const { data: existingBlocks } = await client
+    .from("block_limit_up")
+    .select("date")
+    .eq("code", code)
+    .in("date", tradingDays);
+
+  const existingDatesSet = new Set(
+    (existingBlocks || []).map((row) => row.date as string)
+  );
+
+  // 分类：已有数据的日期 vs 需要抓取的日期
+  const datesWithData: string[] = [];
+  const datesToFetch: string[] = [];
+
+  for (const date of tradingDays) {
+    if (existingDatesSet.has(date)) {
+      datesWithData.push(date);
+    } else {
+      datesToFetch.push(date);
+    }
+  }
+
+  // 限制抓取数量，最多抓取 days 个缺失日期
+  const datesToFetchLimited = datesToFetch.slice(0, days);
+
   const result: { date: string; block: BlockData; stocks: StockData[] }[] = [];
-  let loadedDays = 0;
-  let totalScanned = 0;
-  const maxScan = days * 3; // 最多扫描3倍天数，防止空数据日过多
 
-  while (loadedDays < days && totalScanned < maxScan) {
-    totalScanned++;
-    try {
-      // 先尝试从数据库获取该板块在该日期的数据
-      const { data: cachedBlock } = await client
-        .from("block_limit_up")
-        .select("*")
-        .eq("date", currentDate)
-        .eq("code", code)
-        .limit(1);
+  // 批量从数据库读取已有数据
+  if (datesWithData.length > 0) {
+    // 批量查询板块数据
+    const { data: cachedBlocks } = await client
+      .from("block_limit_up")
+      .select("*")
+      .eq("code", code)
+      .in("date", datesWithData);
 
-      if (cachedBlock && cachedBlock.length > 0) {
-        // 数据库有数据
-        const b = cachedBlock[0];
-        const blockData: BlockData = {
-          date: b.date as string,
-          code: b.code as string,
-          name: b.name as string,
-          change: b.change as number,
-          limitUpNum: b.limit_up_num as number,
-          continuousPlateNum: b.continuous_plate_num as number,
-          high: (b.high as string) || "",
-          highNum: b.high_num as number,
-          days: b.days as number,
-        };
+    // 批量查询股票数据
+    const { data: cachedStocks } = await client
+      .from("stock_limit_up")
+      .select("*")
+      .eq("block_code", code)
+      .in("date", datesWithData);
 
-        const { data: cachedStocks } = await client
-          .from("stock_limit_up")
-          .select("*")
-          .eq("date", currentDate)
-          .eq("block_code", code);
+    // 按日期组织数据
+    for (const date of datesWithData) {
+      const block = cachedBlocks?.find((b) => b.date === date);
+      if (!block) continue;
 
-        const stocks: StockData[] = (cachedStocks || []).map((s) => ({
+      const blockData: BlockData = {
+        date: block.date as string,
+        code: block.code as string,
+        name: block.name as string,
+        change: block.change as number,
+        limitUpNum: block.limit_up_num as number,
+        continuousPlateNum: block.continuous_plate_num as number,
+        high: (block.high as string) || "",
+        highNum: block.high_num as number,
+        days: block.days as number,
+      };
+
+      const stocks: StockData[] = (cachedStocks || [])
+        .filter((s) => s.date === date)
+        .map((s) => ({
           date: s.date as string,
           blockCode: s.block_code as string,
           blockName: s.block_name as string,
@@ -130,20 +156,20 @@ export async function GET(request: NextRequest) {
           timePreview: s.time_preview as number[] | undefined,
         }));
 
-        result.push({ date: currentDate, block: blockData, stocks });
-        loadedDays++;
-        currentDate = getPrevTradingDay(currentDate);
-        continue;
-      }
+      result.push({ date, block: blockData, stocks });
+    }
+  }
 
-      // 数据库没有数据，从API获取
-      const apiData = await fetchFromApi(currentDate);
+  // 抓取缺失的日期数据（逐日抓取，避免被封）
+  for (const date of datesToFetchLimited) {
+    try {
+      const apiData = await fetchFromApi(date);
 
       if (apiData.status_code === 0 && apiData.data) {
         const targetBlock = apiData.data.find((b) => b.code === code);
 
         if (targetBlock) {
-          const block = transformBlockData(currentDate, targetBlock);
+          const block = transformBlockData(date, targetBlock);
 
           // 存储板块数据
           await client.from("block_limit_up").upsert({
@@ -156,15 +182,13 @@ export async function GET(request: NextRequest) {
             high: block.high,
             high_num: block.highNum,
             days: block.days,
-          }, {
-            onConflict: 'date,code'
-          });
+          }, { onConflict: 'date,code' });
 
           const stocks: StockData[] = [];
 
           if (targetBlock.stock_list) {
             for (const stock of targetBlock.stock_list) {
-              const stockData = transformStockData(currentDate, targetBlock, stock);
+              const stockData = transformStockData(date, targetBlock, stock);
               stocks.push(stockData);
 
               // 存储个股数据
@@ -183,34 +207,36 @@ export async function GET(request: NextRequest) {
                 last_limit_up_time: stockData.lastLimitUpTime,
                 reason_type: stockData.reasonType,
                 time_preview: stockData.timePreview,
-              }, {
-                onConflict: 'date,block_code,stock_code'
-              });
+              }, { onConflict: 'date,block_code,stock_code' });
             }
           }
 
-          result.push({ date: currentDate, block, stocks });
-          loadedDays++;
+          result.push({ date, block, stocks });
         }
       }
-
-      currentDate = getPrevTradingDay(currentDate);
     } catch (error) {
-      console.error(`获取 ${currentDate} 数据失败:`, error);
-      currentDate = getPrevTradingDay(currentDate);
+      console.error(`抓取 ${date} 数据失败:`, error);
     }
   }
 
-  const hasMore = totalScanned >= maxScan;
-  const nextDate = result.length > 0 ? getPrevTradingDay(result[result.length - 1].date) : null;
+  // 按日期排序（从新到旧）
+  result.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
-  // 异步更新分时图（不阻塞响应）
-  for (const dayResult of result) {
-    await asyncUpdateTimePreview(dayResult.stocks, dayResult.date);
+  // 只返回 days 个结果
+  const finalResult = result.slice(0, days);
+
+  // 异步更新分时图（不阻塞）
+  for (const dayResult of finalResult) {
+    scheduleTimePreviewUpdate(dayResult.stocks, dayResult.date);
   }
 
+  const hasMore = datesToFetch.length > days || datesWithData.length > days;
+  const nextDate = finalResult.length > 0 
+    ? getPrevTradingDay(finalResult[finalResult.length - 1].date) 
+    : null;
+
   return NextResponse.json({
-    data: result,
+    data: finalResult,
     hasMore,
     nextDate,
   });
