@@ -160,3 +160,7 @@ Desktop.ini
 # Misc
 .coze-logs
 .preview
+next-env.d.ts
+scripts/dev.sh
+scripts/start.sh
+supabase/config.toml

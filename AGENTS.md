@@ -96,4 +96,45 @@
 | `src/app/api/block-history/route.ts` | 板块涨停列表 API |
 | `src/app/api/block-detail/route.ts` | 板块详情 API |
 | `src/app/api/refresh-today/route.ts` | 盘中刷新当天数据 API |
+| `src/app/api/refresh-time-preview/route.ts` | 刷新指定日期分时数据 API |
+| `src/app/api/kline/route.ts` | K线数据 API |
 | `src/app/block-history/page.tsx` | 板块涨停列表页，盘中自动刷新 |
+| `src/app/block-history/[code]/page.tsx` | 板块详情页，左右分栏布局 |
+| `src/components/kline-chart.tsx` | K线图组件（基于 klinecharts） |
+
+### 板块详情页布局
+
+板块详情页 (`/block-history/[code]`) 采用左右分栏布局：
+
+- **左侧（50%）**: 个股列表，支持点击选中查看详情
+- **右侧（50%）**: 选中股票的详细信息
+  - 上：分时缩略图（放大展示）
+  - 中：备注区域（点击编辑）
+  - 下：K线图（主要空间，展示120日日线数据）
+
+响应式设计：
+- **lg 及以上**: 左右分栏布局，点击股票直接在右侧展示
+- **lg 以下**: 单列布局，点击股票打开抽屉展示详情
+
+### K线图组件
+
+`KLineChart` 组件基于 `klinecharts` 库实现：
+
+- 支持股票代码和名称传入
+- 自动从 `/api/kline` 获取120日日线数据
+- 请求取消机制：切换股票时自动取消前一个请求
+- 容器可见时自动 resize 适配尺寸
+- 加载状态骨架屏
+
+### 分时数据刷新
+
+支持两种刷新方式：
+
+1. **盘中自动刷新** - `/api/refresh-today`
+   - 仅在交易时段（周一至周五 9:25-15:15）生效
+   - 进入板块列表页自动调用
+
+2. **手动刷新** - `/api/refresh-time-preview`
+   - 在板块列表页点击"刷新分时"按钮触发
+   - 支持指定日期刷新
+   - 不限交易时段

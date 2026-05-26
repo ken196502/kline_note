@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useBlockHistory } from "@/hooks/use-block-history";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -26,6 +26,8 @@ export default function BlockHistoryPage() {
   const router = useRouter();
   const { data, loading, error, hasMore, loadMore } = useBlockHistory(5);
   const { authenticated, username, loading: authLoading, logout } = useAuth();
+  const [refreshingDate, setRefreshingDate] = useState<string | null>(null);
+  const [refreshMessage, setRefreshMessage] = useState<string | null>(null);
 
   useEffect(() => {
     if (!authLoading && !authenticated) {
@@ -58,11 +60,34 @@ export default function BlockHistoryPage() {
     }
   };
 
+  const handleRefreshTimePreview = async (date: string) => {
+    setRefreshingDate(date);
+    setRefreshMessage(null);
+    try {
+      const res = await fetch("/api/refresh-time-preview", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ date }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setRefreshMessage(`${date} 分时数据刷新成功`);
+      } else {
+        setRefreshMessage(data.error || "刷新失败");
+      }
+    } catch {
+      setRefreshMessage("网络错误，请重试");
+    } finally {
+      setRefreshingDate(null);
+      setTimeout(() => setRefreshMessage(null), 3000);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-slate-50">
       {/* Header */}
       <header className="sticky top-0 z-50 bg-white border-b border-slate-200">
-        <div className="max-w-5xl mx-auto px-4 py-3">
+        <div className="px-4 py-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <TrendingUp className="w-5 h-5 text-orange-600" />
@@ -121,10 +146,15 @@ export default function BlockHistoryPage() {
       </header>
 
       {/* Main Content */}
-      <main className="max-w-5xl mx-auto px-4 py-4">
+      <main className="px-4 py-4">
         {error && (
           <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 text-sm">
             加载失败: {error.message}
+          </div>
+        )}
+        {refreshMessage && (
+          <div className="mb-4 p-3 bg-green-50 border border-green-200 text-green-700 text-sm">
+            {refreshMessage}
           </div>
         )}
 
@@ -140,6 +170,16 @@ export default function BlockHistoryPage() {
                 <span className="text-xs text-slate-400">
                   {dayData.blocks.length}板块
                 </span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => handleRefreshTimePreview(dayData.date)}
+                  disabled={refreshingDate === dayData.date}
+                  className="h-6 px-2 text-xs text-slate-400 hover:text-orange-600"
+                >
+                  <RefreshCw className={`w-3 h-3 mr-1 ${refreshingDate === dayData.date ? "animate-spin" : ""}`} />
+                  {refreshingDate === dayData.date ? "刷新中" : "刷新分时"}
+                </Button>
               </div>
 
               {/* Tile Grid */}
@@ -163,7 +203,7 @@ export default function BlockHistoryPage() {
                       </span>
                     </div>
                     <div className="flex items-center gap-1.5">
-                      <span className="text-[10px] text-slate-400 font-mono truncate">
+                      <span className="text-[10px] text-slate-600 font-mono truncate">
                         {block.code}
                       </span>
                       <span
