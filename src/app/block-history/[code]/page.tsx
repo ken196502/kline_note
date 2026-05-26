@@ -20,6 +20,14 @@ interface DayBlockData {
   stocks: StockData[];
 }
 
+interface NoteMap {
+  [stockCode: string]: string | null;
+}
+
+interface DayNotes {
+  [date: string]: NoteMap;
+}
+
 async function fetchBlockDetail(
   code: string,
   startDate?: string,
@@ -58,7 +66,14 @@ function SortIcon({ field, sortField, sortDir }: { field: SortField; sortField: 
   );
 }
 
-function SortedStockTable({ stocks, date, onStockClick }: { stocks: StockData[]; date: string; onStockClick: (stock: StockData, date: string) => void }) {
+interface SortedStockTableProps {
+  stocks: StockData[];
+  date: string;
+  notes: NoteMap;
+  onNoteClick: (stock: StockData, date: string) => void;
+}
+
+function SortedStockTable({ stocks, date, notes, onNoteClick }: SortedStockTableProps) {
   const [sortField, setSortField] = useState<SortField>("firstLimitUpTime");
   const [sortDir, setSortDir] = useState<SortDirection>("asc");
 
@@ -144,12 +159,17 @@ function SortedStockTable({ stocks, date, onStockClick }: { stocks: StockData[];
             </span>
           </th>
           <th
-            className="text-right pr-3 py-2 font-medium text-slate-500 cursor-pointer hover:text-slate-700 select-none"
+            className="text-right py-2 font-medium text-slate-500 cursor-pointer hover:text-slate-700 select-none"
             onClick={() => handleSort("lastLimitUpTime")}
           >
             <span className="inline-flex items-center justify-end gap-1">
               末封 <SortIcon field="lastLimitUpTime" sortField={sortField} sortDir={sortDir} />
             </span>
+          </th>
+          <th
+            className="text-right pr-3 py-2 font-medium text-slate-500"
+          >
+            备注
           </th>
         </tr>
       </thead>
@@ -157,12 +177,10 @@ function SortedStockTable({ stocks, date, onStockClick }: { stocks: StockData[];
         {sortedStocks.map((stock) => (
           <tr
             key={stock.code}
-            className="hover:bg-orange-50/50 transition-colors cursor-pointer"
-            onClick={() => onStockClick(stock, date)}
+            className="hover:bg-orange-50/30 transition-colors"
           >
             <td className="pl-3 py-1.5">
               <div className="flex items-center gap-1.5">
-                <StickyNote className="w-3 h-3 text-slate-300 flex-shrink-0" />
                 <div>
                   <div className="font-medium text-slate-900 text-xs leading-tight">{stock.name}</div>
                   <div className="text-[10px] text-slate-400 font-mono leading-tight">{stock.code}</div>
@@ -195,14 +213,31 @@ function SortedStockTable({ stocks, date, onStockClick }: { stocks: StockData[];
             <td className="text-right py-1.5 text-[11px] text-slate-500 font-mono">
               {stock.firstLimitUpTime || "-"}
             </td>
-            <td className="text-right pr-3 py-1.5 text-[11px] text-slate-500 font-mono">
+            <td className="text-right py-1.5 text-[11px] text-slate-500 font-mono">
               {stock.lastLimitUpTime || "-"}
+            </td>
+            <td className="text-right pr-3 py-1.5">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onNoteClick(stock, date);
+                }}
+                className="inline-flex items-center justify-center w-7 h-7 rounded hover:bg-orange-100 transition-colors"
+              >
+                {notes[stock.code] ? (
+                  <span className="text-[10px] text-orange-600 font-medium max-w-[50px] truncate">
+                    {notes[stock.code]}
+                  </span>
+                ) : (
+                  <StickyNote className="w-3.5 h-3.5 text-slate-300 hover:text-orange-400" />
+                )}
+              </button>
             </td>
           </tr>
         ))}
         {sortedStocks.length === 0 && (
           <tr>
-            <td colSpan={6} className="text-center py-6 text-slate-400 text-xs">
+            <td colSpan={7} className="text-center py-6 text-slate-400 text-xs">
               暂无涨停个股
             </td>
           </tr>
@@ -228,6 +263,7 @@ export default function BlockDetailPage({
 
   const { authenticated, loading: authLoading } = useAuth();
   const { fetchNote, saveNote, saving } = useNotes();
+  const [notes, setNotes] = useState<DayNotes>({});
   const [drawer, setDrawer] = useState<NoteDrawerState>({
     open: false,
     stockCode: "",
@@ -239,26 +275,39 @@ export default function BlockDetailPage({
 
   useEffect(() => {
     if (!authLoading && !authenticated) {
-      router.push("/");
+      window.location.href = "/";
     }
-  }, [authLoading, authenticated, router]);
+  }, [authLoading, authenticated]);
+
+  const loadAllNotes = useCallback(async (dayDataList: DayBlockData[]) => {
+    const newNotes: DayNotes = {};
+    for (const dayData of dayDataList) {
+      newNotes[dayData.date] = {};
+      for (const stock of dayData.stocks) {
+        const note = await fetchNote(stock.code, dayData.date);
+        newNotes[dayData.date][stock.code] = note;
+      }
+    }
+    setNotes((prev) => ({ ...prev, ...newNotes }));
+  }, [fetchNote]);
 
   useEffect(() => {
     setIsLoading(true);
     setError(null);
     fetchBlockDetail(code)
-      .then((result) => {
+      .then(async (result) => {
         setData(result.data);
         setHasMore(result.hasMore);
         if (result.data.length > 0) {
           setBlockName(result.data[0].block.name);
         }
+        await loadAllNotes(result.data);
       })
       .catch((err) =>
         setError(err instanceof Error ? err : new Error("Unknown error"))
       )
       .finally(() => setIsLoading(false));
-  }, [code]);
+  }, [code, loadAllNotes]);
 
   const loadMore = useCallback(async () => {
     if (isLoadingMore || !hasMore || data.length === 0) return;
@@ -268,12 +317,13 @@ export default function BlockDetailPage({
       const result = await fetchBlockDetail(code, lastDate, 10);
       setData((prev) => [...prev, ...result.data]);
       setHasMore(result.hasMore);
+      await loadAllNotes(result.data);
     } catch (err) {
       setError(err instanceof Error ? err : new Error("Unknown error"));
     } finally {
       setIsLoadingMore(false);
     }
-  }, [isLoadingMore, hasMore, data, code]);
+  }, [isLoadingMore, hasMore, data, code, loadAllNotes]);
 
   const formatDate = (dateStr: string) => {
     try {
@@ -284,8 +334,8 @@ export default function BlockDetailPage({
     }
   };
 
-  const handleStockClick = async (stock: StockData, date: string) => {
-    const existingNote = await fetchNote(stock.code, date);
+  const handleNoteClick = async (stock: StockData, date: string) => {
+    const existingNote = notes[date]?.[stock.code] || null;
     setDrawer({
       open: true,
       stockCode: stock.code,
@@ -303,6 +353,13 @@ export default function BlockDetailPage({
       drawer.content
     );
     if (success) {
+      setNotes((prev) => ({
+        ...prev,
+        [drawer.stockDate]: {
+          ...prev[drawer.stockDate],
+          [drawer.stockCode]: drawer.content || null,
+        },
+      }));
       setDrawer((prev) => ({ ...prev, open: false }));
     }
   };
@@ -412,7 +469,8 @@ export default function BlockDetailPage({
                 <SortedStockTable
                   stocks={dayData.stocks}
                   date={dayData.date}
-                  onStockClick={handleStockClick}
+                  notes={notes[dayData.date] || {}}
+                  onNoteClick={handleNoteClick}
                 />
               </div>
             </div>
