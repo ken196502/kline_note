@@ -1,5 +1,6 @@
 import type { ApiBlock, ApiResponse, ApiStock } from "@/types/block-data";
 import { formatTime } from "./trading-day";
+import { getSupabaseClient } from "@/storage/database/supabase-client";
 
 // 从同花顺API获取涨停池数据（含分时缩略图）
 export async function fetchLimitUpPoolFromApi(date: string) {
@@ -92,6 +93,55 @@ export function transformBlockData(date: string, block: ApiBlock) {
     highNum: block.high_num,
     days: block.days,
   };
+}
+
+// 获取指定日期的涨停分时数据并 upsert 到数据库
+// forceRefresh: 是否强制刷新（盘中场景），为 false 时只更新缺少 time_preview 的记录
+export async function fetchAndUpsertTimePreview(date: string, forceRefresh: boolean = false): Promise<void> {
+  const client = getSupabaseClient();
+
+  // 查询该日期的个股数据
+  let query = client
+    .from("stock_limit_up")
+    .select("date, block_code, stock_code, time_preview")
+    .eq("date", date);
+
+  // 非强制刷新时，只处理缺少 time_preview 的记录
+  if (!forceRefresh) {
+    query = query.is("time_preview", null);
+  }
+
+  const { data: stocks, error } = await query;
+
+  if (error || !stocks || stocks.length === 0) {
+    return;
+  }
+
+  // 从涨停池API获取分时数据
+  const poolData = await fetchLimitUpPoolFromApi(date);
+
+  if (poolData.status_code !== 0 || !poolData.data?.info) {
+    return;
+  }
+
+  const timePreviewMap = new Map<string, number[]>();
+  for (const stockInfo of poolData.data.info) {
+    if (stockInfo.time_preview && stockInfo.time_preview.length > 0) {
+      timePreviewMap.set(stockInfo.code, stockInfo.time_preview);
+    }
+  }
+
+  // 批量 upsert 分时数据
+  for (const stock of stocks) {
+    const timePreview = timePreviewMap.get(stock.stock_code as string);
+    if (timePreview) {
+      await client.from("stock_limit_up")
+        .update({ time_preview: JSON.stringify(timePreview) })
+        .eq("date", stock.date as string)
+        .eq("block_code", stock.block_code as string)
+        .eq("stock_code", stock.stock_code as string);
+    }
+  }
 }
 
 // 转换股票数据

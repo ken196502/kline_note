@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import type { DayBlockData, BlockData, StockData } from "@/types/block-data";
 import {
   fetchFromApi,
+  fetchAndUpsertTimePreview,
   transformBlockData,
   transformStockData,
 } from "@/lib/block-api";
@@ -73,6 +74,7 @@ export async function GET(request: NextRequest) {
           isNew: (s.is_new as number) || 0,
           isSt: (s.is_st as number) || 0,
           marketType: (s.market_type as string) || "",
+          timePreview: typeof s.time_preview === 'string' ? JSON.parse(s.time_preview) as number[] : s.time_preview as number[] | undefined,
         }));
 
         result.push({
@@ -133,6 +135,11 @@ export async function GET(request: NextRequest) {
           }
         }
 
+        // 获取到板块数据后，立即获取涨停分时数据
+        fetchAndUpsertTimePreview(currentDate).catch(err => {
+          console.error(`获取 ${currentDate} 分时数据失败:`, err);
+        });
+
         // 重新从数据库获取数据（已排序）
         const { data: sortedBlocks } = await client
           .from("block_limit_up")
@@ -175,6 +182,7 @@ export async function GET(request: NextRequest) {
           isNew: (s.is_new as number) || 0,
           isSt: (s.is_st as number) || 0,
           marketType: (s.market_type as string) || "",
+          timePreview: typeof s.time_preview === 'string' ? JSON.parse(s.time_preview) as number[] : s.time_preview as number[] | undefined,
         }));
 
         if (blocks.length > 0) {

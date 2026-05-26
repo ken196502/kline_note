@@ -63,3 +63,37 @@
 
 - 模板默认预装核心组件库 `shadcn/ui`，位于`src/components/ui/`目录下
 - Next.js 项目**必须默认**采用 shadcn/ui 组件、风格和规范，**除非用户指定用其他的组件和规范。**
+
+## 业务逻辑说明
+
+### 涨停数据获取流程
+
+1. **板块涨停数据获取** - `GET /api/block-history`
+   - 优先从数据库读取缓存数据
+   - 缓存不存在时从同花顺 API 获取板块涨停数据并 upsert 到数据库
+   - 获取到板块数据后，**立即异步获取当天的涨停分时数据**
+
+2. **分时数据获取** - `fetchAndUpsertTimePreview(date, forceRefresh)`
+   - 从涨停池 API 获取个股分时缩略图数据
+   - `forceRefresh=false`：仅更新缺少 `time_preview` 的记录（默认）
+   - `forceRefresh=true`：强制刷新所有记录（盘中场景）
+
+3. **盘中自动刷新** - `POST /api/refresh-today`
+   - 仅在 A 股交易时段（周一至周五 9:25-15:15）内生效
+   - 用户进入 `/block-history` 页面时自动调用
+   - 强制重新从 API 获取当天板块数据和分时数据并 upsert
+
+4. **交易时段判断** - `isInTradingSession()`
+   - 判断当前是否在 A 股交易时段：周一至周五 9:25-15:15
+   - 用于控制是否触发盘中数据刷新
+
+### 核心文件
+
+| 文件 | 说明 |
+|------|------|
+| `src/lib/block-api.ts` | 板块 API 调用、数据转换、分时获取 |
+| `src/lib/trading-day.ts` | 交易日判断、交易时段判断 |
+| `src/app/api/block-history/route.ts` | 板块涨停列表 API |
+| `src/app/api/block-detail/route.ts` | 板块详情 API |
+| `src/app/api/refresh-today/route.ts` | 盘中刷新当天数据 API |
+| `src/app/block-history/page.tsx` | 板块涨停列表页，盘中自动刷新 |

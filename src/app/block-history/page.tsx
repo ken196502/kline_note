@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useBlockHistory } from "@/hooks/use-block-history";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -10,6 +10,17 @@ import { format, parseISO } from "date-fns";
 import { zhCN } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
+
+// 判断当前是否在A股交易时段（9:25 - 15:15）
+function isInTradingSession(): boolean {
+  const now = new Date();
+  const day = now.getDay();
+  if (day === 0 || day === 6) return false;
+  const hours = now.getHours();
+  const minutes = now.getMinutes();
+  const timeInMinutes = hours * 60 + minutes;
+  return timeInMinutes >= 565 && timeInMinutes <= 915;
+}
 
 export default function BlockHistoryPage() {
   const router = useRouter();
@@ -21,6 +32,20 @@ export default function BlockHistoryPage() {
       router.push("/");
     }
   }, [authLoading, authenticated, router]);
+
+  // 交易时段内，每次进入网站都刷新当天的板块涨停和分时数据
+  const refreshTodayData = useCallback(() => {
+    if (!isInTradingSession()) return;
+    fetch("/api/refresh-today", { method: "POST" }).catch(() => {
+      // 静默失败，不影响用户体验
+    });
+  }, []);
+
+  useEffect(() => {
+    if (authenticated) {
+      refreshTodayData();
+    }
+  }, [authenticated, refreshTodayData]);
 
   const formatDate = (dateStr: string) => {
     try {

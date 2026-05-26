@@ -51,6 +51,23 @@ export function formatTime(timestamp: string): string {
   return timeStr ?? "";
 }
 
+// 判断当前是否在A股交易时段（9:25 - 15:15）
+// 用于判断是否需要刷新当天的涨停数据
+export function isInTradingSession(): boolean {
+  const now = new Date();
+  const day = now.getDay();
+
+  // 周末不是交易日
+  if (day === 0 || day === 6) return false;
+
+  const hours = now.getHours();
+  const minutes = now.getMinutes();
+  const timeInMinutes = hours * 60 + minutes;
+
+  // 9:25 = 9*60+25 = 565, 15:15 = 15*60+15 = 915
+  return timeInMinutes >= 565 && timeInMinutes <= 915;
+}
+
 // 获取最近N个交易日
 export function getRecentTradingDays(startFrom: string, count: number): string[] {
   const days: string[] = [];

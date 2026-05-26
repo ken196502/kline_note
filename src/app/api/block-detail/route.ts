@@ -2,54 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import type { BlockData, StockData } from "@/types/block-data";
 import {
   fetchFromApi,
-  fetchLimitUpPoolFromApi,
   transformBlockData,
   transformStockData,
 } from "@/lib/block-api";
 import { getPrevTradingDay, isHoliday, getRecentTradingDays } from "@/lib/trading-day";
 import { getSupabaseClient } from "@/storage/database/supabase-client";
-
-// 异步更新分时图数据（带延迟防封）- fire and forget
-function scheduleTimePreviewUpdate(stocks: StockData[], date: string) {
-  // 只处理没有timePreview的股票
-  const stocksWithoutPreview = stocks.filter(s => !s.timePreview);
-  if (stocksWithoutPreview.length === 0) return;
-
-  // 异步执行，不阻塞响应
-  (async () => {
-    try {
-      const poolData = await fetchLimitUpPoolFromApi(date);
-      
-      if (poolData.status_code === 0 && poolData.data?.info) {
-        const client = getSupabaseClient();
-        
-        const timePreviewMap = new Map<string, number[]>();
-        for (const stockInfo of poolData.data.info) {
-          if (stockInfo.time_preview && stockInfo.time_preview.length > 0) {
-            timePreviewMap.set(stockInfo.code, stockInfo.time_preview);
-          }
-        }
-
-        for (const stock of stocksWithoutPreview) {
-          const timePreview = timePreviewMap.get(stock.code);
-          if (timePreview) {
-            await client.from("stock_limit_up")
-              .update({ time_preview: JSON.stringify(timePreview) })
-              .eq("date", stock.date)
-              .eq("block_code", stock.blockCode)
-              .eq("stock_code", stock.code);
-            
-            // 延迟防封
-            const delay = 1000 + Math.random() * 1000;
-            await new Promise(resolve => setTimeout(resolve, delay));
-          }
-        }
-      }
-    } catch (error) {
-      console.error("异步更新分时图失败:", error);
-    }
-  })();
-}
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
@@ -224,11 +181,6 @@ export async function GET(request: NextRequest) {
 
   // 只返回 days 个结果
   const finalResult = result.slice(0, days);
-
-  // 异步更新分时图（不阻塞）
-  for (const dayResult of finalResult) {
-    scheduleTimePreviewUpdate(dayResult.stocks, dayResult.date);
-  }
 
   const hasMore = datesToFetch.length > days || datesWithData.length > days;
   const nextDate = finalResult.length > 0 
