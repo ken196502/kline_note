@@ -6,6 +6,7 @@ import {
   transformStockData,
 } from "@/lib/block-api";
 import { getPrevTradingDay, isHoliday } from "@/lib/trading-day";
+import { getSupabaseClient } from "@/storage/database/supabase-client";
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
@@ -24,6 +25,7 @@ export async function GET(request: NextRequest) {
     currentDate = getPrevTradingDay(currentDate);
   }
 
+  const client = getSupabaseClient();
   const result: { date: string; block: BlockData; stocks: StockData[] }[] = [];
   let loadedDays = 0;
   let totalScanned = 0;
@@ -32,6 +34,62 @@ export async function GET(request: NextRequest) {
   while (loadedDays < days && totalScanned < maxScan) {
     totalScanned++;
     try {
+      // 先尝试从数据库获取该板块在该日期的数据
+      const { data: cachedBlock } = await client
+        .from("block_limit_up")
+        .select("*")
+        .eq("date", currentDate)
+        .eq("code", code)
+        .limit(1);
+
+      if (cachedBlock && cachedBlock.length > 0) {
+        // 数据库有数据
+        const b = cachedBlock[0];
+        const blockData: BlockData = {
+          date: b.date as string,
+          code: b.code as string,
+          name: b.name as string,
+          change: b.change as number,
+          limitUpNum: b.limit_up_num as number,
+          continuousPlateNum: b.continuous_plate_num as number,
+          high: (b.high as string) || "",
+          highNum: b.high_num as number,
+          days: b.days as number,
+        };
+
+        const { data: cachedStocks } = await client
+          .from("stock_limit_up")
+          .select("*")
+          .eq("date", currentDate)
+          .eq("block_code", code);
+
+        const stocks: StockData[] = (cachedStocks || []).map((s) => ({
+          date: s.date as string,
+          blockCode: s.block_code as string,
+          blockName: s.block_name as string,
+          code: s.stock_code as string,
+          name: s.stock_name as string,
+          latest: s.latest as number,
+          changeRate: s.change_rate as number,
+          continueNum: s.continue_num as number,
+          high: (s.high as string) || "",
+          highDays: s.high_days as number,
+          firstLimitUpTime: (s.first_limit_up_time as string) || "",
+          lastLimitUpTime: (s.last_limit_up_time as string) || "",
+          reasonType: (s.reason_type as string) || "",
+          reasonInfo: (s.reason_info as string) || "",
+          isNew: (s.is_new as number) || 0,
+          isSt: (s.is_st as number) || 0,
+          marketType: (s.market_type as string) || "",
+        }));
+
+        result.push({ date: currentDate, block: blockData, stocks });
+        loadedDays++;
+        currentDate = getPrevTradingDay(currentDate);
+        continue;
+      }
+
+      // 数据库没有数据，从API获取
       const apiData = await fetchFromApi(currentDate);
 
       if (apiData.status_code === 0 && apiData.data) {
@@ -39,11 +97,47 @@ export async function GET(request: NextRequest) {
 
         if (targetBlock) {
           const block = transformBlockData(currentDate, targetBlock);
+
+          // 存储板块数据
+          await client.from("block_limit_up").upsert({
+            date: block.date,
+            code: block.code,
+            name: block.name,
+            change: block.change,
+            limit_up_num: block.limitUpNum,
+            continuous_plate_num: block.continuousPlateNum,
+            high: block.high,
+            high_num: block.highNum,
+            days: block.days,
+          }, {
+            onConflict: 'date,code'
+          });
+
           const stocks: StockData[] = [];
 
           if (targetBlock.stock_list) {
             for (const stock of targetBlock.stock_list) {
-              stocks.push(transformStockData(currentDate, targetBlock, stock));
+              const stockData = transformStockData(currentDate, targetBlock, stock);
+              stocks.push(stockData);
+
+              // 存储个股数据
+              await client.from("stock_limit_up").upsert({
+                date: stockData.date,
+                block_code: stockData.blockCode,
+                block_name: stockData.blockName,
+                stock_code: stockData.code,
+                stock_name: stockData.name,
+                latest: stockData.latest,
+                change_rate: stockData.changeRate,
+                continue_num: stockData.continueNum,
+                high: stockData.high,
+                high_days: stockData.highDays,
+                first_limit_up_time: stockData.firstLimitUpTime,
+                last_limit_up_time: stockData.lastLimitUpTime,
+                reason_type: stockData.reasonType,
+              }, {
+                onConflict: 'date,block_code,stock_code'
+              });
             }
           }
 
