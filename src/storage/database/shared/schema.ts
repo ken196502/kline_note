@@ -51,6 +51,7 @@ export const stockLimitUp = pgTable("stock_limit_up", {
 	firstLimitUpTime: varchar("first_limit_up_time", { length: 16 }).default(""),
 	lastLimitUpTime: varchar("last_limit_up_time", { length: 16 }).default(""),
 	reasonType: varchar("reason_type", { length: 256 }).default(""),
+	timePreview: text("time_preview"),
 	fetchedAt: timestamp("fetched_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
 }, (table) => [
 	uniqueIndex("stock_limit_up_unique_idx").using("btree", table.date.asc().nullsLast().op("text_ops"), table.blockCode.asc().nullsLast().op("text_ops"), table.stockCode.asc().nullsLast().op("text_ops")),

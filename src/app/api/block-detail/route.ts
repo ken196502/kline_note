@@ -34,7 +34,7 @@ function scheduleTimePreviewUpdate(stocks: StockData[], date: string) {
           const timePreview = timePreviewMap.get(stock.code);
           if (timePreview) {
             await client.from("stock_limit_up")
-              .update({ time_preview: timePreview })
+              .update({ time_preview: JSON.stringify(timePreview) })
               .eq("date", stock.date)
               .eq("block_code", stock.blockCode)
               .eq("stock_code", stock.code);
@@ -153,7 +153,7 @@ export async function GET(request: NextRequest) {
           isNew: (s.is_new as number) || 0,
           isSt: (s.is_st as number) || 0,
           marketType: (s.market_type as string) || "",
-          timePreview: s.time_preview as number[] | undefined,
+          timePreview: typeof s.time_preview === 'string' ? JSON.parse(s.time_preview) as number[] : s.time_preview as number[] | undefined,
         }));
 
       result.push({ date, block: blockData, stocks });
@@ -206,7 +206,7 @@ export async function GET(request: NextRequest) {
                 first_limit_up_time: stockData.firstLimitUpTime,
                 last_limit_up_time: stockData.lastLimitUpTime,
                 reason_type: stockData.reasonType,
-                time_preview: stockData.timePreview,
+                time_preview: stockData.timePreview ? JSON.stringify(stockData.timePreview) : null,
               }, { onConflict: 'date,block_code,stock_code' });
             }
           }

@@ -11,6 +11,7 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const stockCode = searchParams.get("stock_code");
   const stockDate = searchParams.get("stock_date");
+  const stockCodes = searchParams.get("stock_codes"); // 支持批量查询: 逗号分隔的股票代码列表
 
   const client = getSupabaseClient();
 
@@ -20,14 +21,23 @@ export async function GET(request: NextRequest) {
     .eq("username", username)
     .order("updated_at", { ascending: false });
 
-  if (stockCode) {
-    query = query.eq("stock_code", stockCode);
-  }
-  if (stockDate) {
-    query = query.eq("stock_date", stockDate);
+  // 批量查询：按日期 + 多个股票代码
+  if (stockDate && stockCodes) {
+    const codeList = stockCodes.split(",").map((c) => c.trim()).filter(Boolean);
+    if (codeList.length > 0) {
+      query = query.eq("stock_date", stockDate).in("stock_code", codeList);
+    }
+  } else {
+    // 单个查询
+    if (stockCode) {
+      query = query.eq("stock_code", stockCode);
+    }
+    if (stockDate) {
+      query = query.eq("stock_date", stockDate);
+    }
   }
 
-  const { data, error } = await query.limit(100);
+  const { data, error } = await query.limit(500);
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
