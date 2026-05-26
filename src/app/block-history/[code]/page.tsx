@@ -36,22 +36,22 @@ const SortableHeader = ({
   currentField,
   currentDir,
   onSort,
-  justify = "start"
+  className,
 }: {
   field: SortField;
   label: string;
   currentField: SortField;
   currentDir: SortDir;
   onSort: (field: SortField) => void;
-  justify?: "start" | "end";
+  className?: string;
 }) => {
   const isActive = currentField === field;
   return (
     <th
       onClick={() => onSort(field)}
       className={cn(
-        "px-2 py-1.5 text-xs font-medium text-slate-500 cursor-pointer hover:bg-slate-50 select-none",
-        justify === "end" ? "text-right" : "text-left"
+        "px-1 py-1 text-xs font-medium text-slate-500 cursor-pointer hover:bg-slate-50 select-none text-left",
+        className
       )}
     >
       <span className="inline-flex items-center gap-1">
@@ -79,16 +79,32 @@ export default function BlockDetailPage() {
   const { data, loading, error, hasMore, loadMore, allBlocks } = useBlockDetail(code);
   const { notes, loading: notesLoading, saveNote, getNote, preloadNotes } = useNotes();
 
-  // 所有去重板块列表，按字母排序
-  const uniqueBlocks = useMemo(() => {
+  // 按首字母分组的板块列表（类似通讯录）
+  const groupedBlocks = useMemo(() => {
     const blockMap = new Map<string, { code: string; name: string }>();
     allBlocks.forEach(block => {
       if (!blockMap.has(block.code)) {
         blockMap.set(block.code, { code: block.code, name: block.name });
       }
     });
-    return Array.from(blockMap.values()).sort((a, b) => a.name.localeCompare(b.name));
+    const sortedBlocks = Array.from(blockMap.values()).sort((a, b) => a.name.localeCompare(b.name));
+    
+    // 按首字母分组
+    const groups: { [key: string]: Array<{ code: string; name: string }> } = {};
+    sortedBlocks.forEach(block => {
+      const firstChar = block.name.charAt(0).toUpperCase();
+      if (!groups[firstChar]) {
+        groups[firstChar] = [];
+      }
+      groups[firstChar].push(block);
+    });
+    return groups;
   }, [allBlocks]);
+  
+  // 首字母分组的排序键
+  const groupKeys = useMemo(() => {
+    return Object.keys(groupedBlocks).sort((a, b) => a.localeCompare(b));
+  }, [groupedBlocks]);
 
   // 板块切换drawer状态
   const [blockPickerOpen, setBlockPickerOpen] = useState(false);
@@ -214,9 +230,9 @@ export default function BlockDetailPage() {
     if (data.length > 0) {
       return data[0].block.name;
     }
-    const block = uniqueBlocks.find(b => b.code === code);
+    const block = allBlocks.find(b => b.code === code);
     return block ? block.name : code;
-  }, [data, uniqueBlocks, code]);
+  }, [data, allBlocks, code]);
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -248,23 +264,32 @@ export default function BlockDetailPage() {
                       <SheetTitle>选择板块</SheetTitle>
                     </SheetHeader>
                     <div className="mt-4 max-h-[calc(100vh-120px)] overflow-y-auto">
-                      <div className="space-y-1">
-                        {uniqueBlocks.map((block) => (
-                          <button
-                            key={block.code}
-                            onClick={() => handleBlockSelect(block.code)}
-                            className={cn(
-                              "w-full text-left px-3 py-2.5 text-sm rounded-lg transition-colors",
-                              block.code === code
-                                ? "bg-orange-50 text-orange-700 font-medium"
-                                : "hover:bg-slate-100 text-slate-700"
-                            )}
-                          >
-                            <div className="flex items-center justify-between">
-                              <span className="truncate">{block.name}</span>
-                              <span className="text-xs text-slate-400 font-mono">{block.code}</span>
+                      <div className="space-y-2">
+                        {groupKeys.map((letter) => (
+                          <div key={letter} className="space-y-1">
+                            <div className="px-2 py-1 text-xs font-semibold text-slate-400 bg-slate-100 rounded-sm">
+                              {letter}
                             </div>
-                          </button>
+                            <div className="space-y-0.5">
+                              {groupedBlocks[letter].map((block) => (
+                                <button
+                                  key={block.code}
+                                  onClick={() => handleBlockSelect(block.code)}
+                                  className={cn(
+                                    "w-full text-left px-2 py-1.5 text-sm rounded transition-colors",
+                                    block.code === code
+                                      ? "bg-orange-50 text-orange-700 font-medium"
+                                      : "hover:bg-slate-50 text-slate-700"
+                                  )}
+                                >
+                                  <div className="flex items-center justify-between">
+                                    <span className="truncate">{block.name}</span>
+                                    <span className="text-[10px] text-slate-400 font-mono">{block.code}</span>
+                                  </div>
+                                </button>
+                              ))}
+                            </div>
+                          </div>
                         ))}
                       </div>
                     </div>
@@ -317,7 +342,7 @@ export default function BlockDetailPage() {
 
                 {/* Stock Table */}
                 <div className="bg-white border border-slate-200 overflow-x-auto">
-                  <table className="w-full text-sm">
+                  <table className="w-full text-sm table-fixed">
                     <thead className="bg-slate-50 border-b border-slate-200">
                       <tr>
                         <SortableHeader
@@ -326,6 +351,7 @@ export default function BlockDetailPage() {
                           currentField={sortField}
                           currentDir={sortDir}
                           onSort={handleSort}
+                          className="w-32"
                         />
                         <SortableHeader
                           field="latest"
@@ -333,7 +359,7 @@ export default function BlockDetailPage() {
                           currentField={sortField}
                           currentDir={sortDir}
                           onSort={handleSort}
-                          justify="end"
+                          className="w-16"
                         />
                         <SortableHeader
                           field="changeRate"
@@ -341,7 +367,7 @@ export default function BlockDetailPage() {
                           currentField={sortField}
                           currentDir={sortDir}
                           onSort={handleSort}
-                          justify="end"
+                          className="w-16"
                         />
                         <SortableHeader
                           field="continueNum"
@@ -349,7 +375,7 @@ export default function BlockDetailPage() {
                           currentField={sortField}
                           currentDir={sortDir}
                           onSort={handleSort}
-                          justify="end"
+                          className="w-20"
                         />
                         <SortableHeader
                           field="firstLimitUpTime"
@@ -357,7 +383,7 @@ export default function BlockDetailPage() {
                           currentField={sortField}
                           currentDir={sortDir}
                           onSort={handleSort}
-                          justify="end"
+                          className="w-16"
                         />
                         <SortableHeader
                           field="lastLimitUpTime"
@@ -365,9 +391,9 @@ export default function BlockDetailPage() {
                           currentField={sortField}
                           currentDir={sortDir}
                           onSort={handleSort}
-                          justify="end"
+                          className="w-16"
                         />
-                        <th className="px-2 py-1.5 text-xs font-medium text-slate-500 text-center w-16">
+                        <th className="px-1 py-1 text-xs font-medium text-slate-500 text-left">
                           备注
                         </th>
                       </tr>
@@ -377,9 +403,9 @@ export default function BlockDetailPage() {
                         const note = getNote(stock.code, dayData.date);
                         return (
                           <tr key={stock.code} className="hover:bg-slate-50/50">
-                            <td className="px-2 py-1.5">
-                              <div className="flex items-center gap-1.5">
-                                <span className="font-medium text-sm text-slate-900 truncate max-w-[120px]">
+                            <td className="px-1 py-1">
+                              <div className="flex items-center gap-1">
+                                <span className="font-medium text-sm text-slate-900 truncate">
                                   {stock.name}
                                 </span>
                                 <span className="text-[10px] text-slate-400 font-mono">
@@ -387,12 +413,12 @@ export default function BlockDetailPage() {
                                 </span>
                               </div>
                             </td>
-                            <td className="px-2 py-1.5 text-right">
+                            <td className="px-1 py-1">
                               <span className="font-mono text-sm text-slate-700">
                                 {stock.latest.toFixed(2)}
                               </span>
                             </td>
-                            <td className="px-2 py-1.5 text-right">
+                            <td className="px-1 py-1">
                               <span
                                 className={cn(
                                   "font-mono text-sm",
@@ -407,7 +433,7 @@ export default function BlockDetailPage() {
                                 {stock.changeRate.toFixed(2)}%
                               </span>
                             </td>
-                            <td className="px-2 py-1.5 text-right">
+                            <td className="px-1 py-1">
                               <span className="text-sm">
                                 <span className={cn(
                                   "font-mono",
@@ -420,32 +446,32 @@ export default function BlockDetailPage() {
                                 <span className="text-[10px] text-slate-400 ml-0.5">板</span>
                               </span>
                               {stock.high && stock.high !== "0" && (
-                                <span className="text-[10px] text-slate-400 ml-1">
+                                <span className="text-[10px] text-slate-400 ml-0.5">
                                   /{stock.high}
                                 </span>
                               )}
                             </td>
-                            <td className="px-2 py-1.5 text-right">
+                            <td className="px-1 py-1">
                               <span className="font-mono text-xs text-slate-500">
                                 {stock.firstLimitUpTime}
                               </span>
                             </td>
-                            <td className="px-2 py-1.5 text-right">
+                            <td className="px-1 py-1">
                               <span className="font-mono text-xs text-slate-500">
                                 {stock.lastLimitUpTime}
                               </span>
                             </td>
-                            <td className="px-2 py-1.5 text-center">
+                            <td className="px-1 py-1">
                               <button
                                 onClick={() => openNoteDrawer(stock, dayData.date, dayData.block.name)}
-                                className="inline-flex items-center justify-center h-6 px-1.5 rounded hover:bg-slate-100 text-slate-400 hover:text-slate-700 transition-colors"
+                                className="inline-flex items-center justify-center h-5 px-1 rounded hover:bg-slate-100 text-slate-400 hover:text-slate-700 transition-colors"
                               >
                                 {note ? (
-                                  <span className="text-xs text-slate-700 truncate max-w-[60px]" title={note}>
-                                    {note.length > 8 ? note.substring(0, 8) + "…" : note}
+                                  <span className="text-xs text-slate-700 truncate max-w-[80px]" title={note}>
+                                    {note.length > 10 ? note.substring(0, 10) + "…" : note}
                                   </span>
                                 ) : (
-                                  <StickyNote className="w-3.5 h-3.5" />
+                                  <StickyNote className="w-3 h-3" />
                                 )}
                               </button>
                             </td>
@@ -523,57 +549,37 @@ export default function BlockDetailPage() {
             <div className="text-xs text-slate-400">已加载全部数据</div>
           )}
         </div>
-
-        {/* Initial Loading */}
-        {loading && data.length === 0 && (
-          <div className="flex flex-col items-center justify-center py-20">
-            <div className="w-10 h-10 border-3 border-slate-200 border-t-orange-500 rounded-full animate-spin" />
-            <p className="mt-3 text-sm text-slate-400">加载中...</p>
-          </div>
-        )}
       </main>
 
       {/* Note Drawer */}
       <Drawer open={noteDrawerOpen} onOpenChange={setNoteDrawerOpen}>
         <DrawerContent>
-          <DrawerHeader>
-            <DrawerTitle>
-              {currentNoteStock && (
-                <div className="flex items-center gap-2">
-                  <span className="font-semibold">{currentNoteStock.stock.name}</span>
-                  <span className="text-xs text-slate-400 font-mono">
-                    {currentNoteStock.stock.code}
-                  </span>
-                  <span className="text-xs text-slate-400">
-                    {currentNoteStock.date}
-                  </span>
-                </div>
-              )}
-            </DrawerTitle>
+          <DrawerHeader className="px-4 pt-4">
+            {currentNoteStock && (
+              <DrawerTitle>
+                {currentNoteStock.blockName} - {currentNoteStock.stock.name} ({currentNoteStock.stock.code})
+              </DrawerTitle>
+            )}
+            <div className="text-xs text-slate-500 mt-1">
+              {currentNoteStock && formatDate(currentNoteStock.date)}
+            </div>
           </DrawerHeader>
-          <div className="px-4 pb-4">
+          <div className="px-4 py-4">
             <Textarea
               value={noteContent}
               onChange={(e) => setNoteContent(e.target.value)}
               placeholder="输入备注内容..."
-              className="min-h-[120px] resize-none"
-              autoFocus
+              className="min-h-[150px] resize-none"
             />
-            <div className="flex items-center justify-end gap-2 mt-4">
+            <div className="flex justify-end gap-2 mt-4">
               <Button
-                variant="outline"
-                size="sm"
+                variant="ghost"
                 onClick={() => setNoteDrawerOpen(false)}
                 disabled={savingNote}
               >
                 取消
               </Button>
-              <Button
-                size="sm"
-                onClick={handleSaveNote}
-                disabled={savingNote}
-                className="bg-orange-600 hover:bg-orange-700"
-              >
+              <Button onClick={handleSaveNote} disabled={savingNote}>
                 {savingNote ? "保存中..." : "保存"}
               </Button>
             </div>
