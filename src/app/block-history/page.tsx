@@ -74,69 +74,54 @@ export default function BlockHistoryPage() {
           </div>
         )}
 
-        <div className="space-y-5">
+        <div className="space-y-6">
           {data.map((dayData) => (
             <div key={dayData.date}>
               {/* Date Header */}
-              <div className="flex items-center gap-2 mb-2">
+              <div className="flex items-center gap-2 mb-3">
                 <Calendar className="w-3.5 h-3.5 text-slate-400" />
                 <span className="text-sm font-semibold text-slate-700">
                   {formatDate(dayData.date)}
                 </span>
                 <span className="text-xs text-slate-400">
-                  {dayData.blocks.length}板块 · {dayData.stocks.length}涨停
+                  {dayData.blocks.length}板块
                 </span>
               </div>
 
-              {/* Compact Block List */}
-              <div className="bg-white border border-slate-200 divide-y divide-slate-100">
+              {/* Tile Grid */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
                 {dayData.blocks.map((block) => (
                   <Link
                     key={`${dayData.date}-${block.code}`}
                     href={`/block-history/${block.code}`}
-                    className="flex items-center justify-between px-3 py-2 hover:bg-orange-50/50 transition-colors group"
+                    className="bg-white border border-slate-200 px-2.5 py-2 hover:bg-orange-50/50 transition-colors group"
                   >
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="font-semibold text-sm text-slate-900 group-hover:text-orange-600 transition-colors truncate">
-                          {block.name}
-                        </span>
-                        <span className="text-orange-600 text-xs font-medium flex-shrink-0">
-                          {block.limitUpNum}涨停
-                        </span>
-                        {block.high && block.high !== "0" && (
-                          <span className="text-purple-600 text-xs font-medium flex-shrink-0">
-                            最高{block.high}
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-2 mt-0.5">
-                        <span className="text-[11px] text-slate-400 font-mono">
-                          {block.code}
-                        </span>
-                        <span
-                          className={cn(
-                            "text-[11px] font-mono",
-                            block.change > 0
-                              ? "text-green-600"
-                              : block.change < 0
-                              ? "text-red-600"
-                              : "text-slate-400"
-                          )}
-                        >
-                          {block.change > 0 ? "+" : ""}
-                          {block.change.toFixed(2)}%
-                        </span>
-                      </div>
+                    <div className="flex items-center gap-1.5 mb-0.5">
+                      <span className="font-semibold text-sm text-slate-900 group-hover:text-orange-600 transition-colors truncate">
+                        {block.name}
+                      </span>
+                      <span className="text-orange-600 text-xs font-medium flex-shrink-0">
+                        {block.limitUpNum}
+                      </span>
                     </div>
-                    <svg
-                      className="w-4 h-4 text-slate-300 group-hover:text-orange-400 transition-colors flex-shrink-0"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                    >
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                    </svg>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[10px] text-slate-400 font-mono truncate">
+                        {block.code}
+                      </span>
+                      <span
+                        className={cn(
+                          "text-[10px] font-mono flex-shrink-0",
+                          block.change > 0
+                            ? "text-green-600"
+                            : block.change < 0
+                            ? "text-red-600"
+                            : "text-slate-400"
+                        )}
+                      >
+                        {block.change > 0 ? "+" : ""}
+                        {block.change.toFixed(2)}%
+                      </span>
+                    </div>
                   </Link>
                 ))}
               </div>
@@ -144,18 +129,17 @@ export default function BlockHistoryPage() {
           ))}
         </div>
 
-        {/* Loading */}
+        {/* Loading Tiles */}
         {loading && (
-          <div className="mt-4 bg-white border border-slate-200 divide-y divide-slate-100">
-            {Array.from({ length: 8 }).map((_, i) => (
-              <div key={i} className="px-3 py-2 flex items-center justify-between">
-                <div className="space-y-1.5">
-                  <Skeleton className="h-4 w-28" />
-                  <Skeleton className="h-3 w-20" />
+          <div className="mt-4 space-y-6">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
+              {Array.from({ length: 10 }).map((_, i) => (
+                <div key={i} className="bg-white border border-slate-200 px-2.5 py-2">
+                  <Skeleton className="h-4 w-full mb-1" />
+                  <Skeleton className="h-3 w-16" />
                 </div>
-                <Skeleton className="h-4 w-4" />
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         )}
 

@@ -14,29 +14,49 @@ interface NoteData {
 
 export function useNotes() {
   const [notesMap, setNotesMap] = useState<Record<string, string>>({});
+  const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
 
   // 获取某只股票某日的备注
-  const fetchNote = useCallback(async (stockCode: string, stockDate: string) => {
+  const getNote = useCallback((stockCode: string, stockDate: string) => {
     const key = `${stockCode}_${stockDate}`;
-    if (notesMap[key] !== undefined) return notesMap[key];
-
-    try {
-      const res = await fetch(
-        `/api/notes?stock_code=${stockCode}&stock_date=${stockDate}`
-      );
-      if (res.ok) {
-        const data = await res.json();
-        const note = (data.data as NoteData[])?.[0];
-        const content = note?.content || "";
-        setNotesMap((prev) => ({ ...prev, [key]: content }));
-        return content;
-      }
-    } catch {
-      // ignore
-    }
-    return "";
+    return notesMap[key] || "";
   }, [notesMap]);
+
+  // 预加载一批备注
+  const preloadNotes = useCallback(
+    async (stockKeyList: Array<{ stockCode: string; stockDate: string }>) => {
+      setLoading(true);
+      try {
+        const newNotes: Record<string, string> = {};
+        for (const { stockCode, stockDate } of stockKeyList) {
+          const key = `${stockCode}_${stockDate}`;
+          if (notesMap[key] !== undefined) {
+            newNotes[key] = notesMap[key];
+            continue;
+          }
+          try {
+            const res = await fetch(
+              `/api/notes?stock_code=${stockCode}&stock_date=${stockDate}`
+            );
+            if (res.ok) {
+              const data = await res.json();
+              const note = (data.data as NoteData[])?.[0];
+              newNotes[key] = note?.content || "";
+            } else {
+              newNotes[key] = "";
+            }
+          } catch {
+            newNotes[key] = "";
+          }
+        }
+        setNotesMap((prev) => ({ ...prev, ...newNotes }));
+      } finally {
+        setLoading(false);
+      }
+    },
+    [notesMap]
+  );
 
   // 保存备注
   const saveNote = useCallback(
@@ -68,5 +88,5 @@ export function useNotes() {
     []
   );
 
-  return { notesMap, fetchNote, saveNote, saving };
+  return { notes: notesMap, loading, saving, saveNote, getNote, preloadNotes };
 }

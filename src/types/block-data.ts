@@ -77,3 +77,15 @@ export interface BlockHistoryResponse {
   hasMore: boolean;
   nextDate: string | null;
 }
+
+export interface DayBlockDetailData {
+  date: string;
+  block: BlockData;
+  stocks: StockData[];
+}
+
+export interface BlockDetailResponse {
+  data: DayBlockDetailData[];
+  hasMore: boolean;
+  nextDate: string | null;
+}

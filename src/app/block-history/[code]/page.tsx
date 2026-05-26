@@ -1,498 +1,521 @@
 "use client";
 
-import { use, useState, useEffect, useCallback, useMemo } from "react";
-import { useRouter } from "next/navigation";
-import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Textarea } from "@/components/ui/textarea";
-import { ArrowLeft, TrendingUp, RefreshCw, Clock, X, Save, StickyNote, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
-import Link from "next/link";
+import { useEffect, useState, useMemo, useCallback } from "react";
+import { useParams, useRouter } from "next/navigation";
 import { format, parseISO } from "date-fns";
 import { zhCN } from "date-fns/locale";
+import {
+  ArrowLeft,
+  TrendingUp,
+  SortAsc,
+  SortDesc,
+  Calendar,
+  StickyNote,
+  X,
+  LogOut,
+  Menu,
+  ChevronDown
+} from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { BlockData, StockData } from "@/types/block-data";
+import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from "@/components/ui/drawer";
+import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/hooks/use-auth";
 import { useNotes } from "@/hooks/use-notes";
-
-interface DayBlockData {
-  date: string;
-  block: BlockData;
-  stocks: StockData[];
-}
-
-interface NoteMap {
-  [stockCode: string]: string | null;
-}
-
-interface DayNotes {
-  [date: string]: NoteMap;
-}
-
-async function fetchBlockDetail(
-  code: string,
-  startDate?: string,
-  days: number = 10
-): Promise<{
-  data: DayBlockData[];
-  hasMore: boolean;
-  nextDate: string | null;
-}> {
-  const params = new URLSearchParams({ code, days: String(days) });
-  if (startDate) params.set("startDate", startDate);
-
-  const response = await fetch(`/api/block-detail?${params.toString()}`);
-  if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-  return response.json();
-}
-
-interface NoteDrawerState {
-  open: boolean;
-  stockCode: string;
-  stockName: string;
-  stockDate: string;
-  content: string;
-  originalContent: string;
-}
+import { useBlockDetail } from "@/hooks/use-block-detail";
+import { type BlockData, type StockData } from "@/types/block-data";
 
 type SortField = "name" | "latest" | "changeRate" | "continueNum" | "firstLimitUpTime" | "lastLimitUpTime";
-type SortDirection = "asc" | "desc";
+type SortDir = "asc" | "desc";
 
-function SortIcon({ field, sortField, sortDir }: { field: SortField; sortField: SortField; sortDir: SortDirection }) {
-  if (sortField !== field) return <ArrowUpDown className="w-3 h-3 text-slate-300" />;
-  return sortDir === "asc" ? (
-    <ArrowUp className="w-3 h-3 text-orange-600" />
-  ) : (
-    <ArrowDown className="w-3 h-3 text-orange-600" />
-  );
-}
-
-interface SortedStockTableProps {
-  stocks: StockData[];
-  date: string;
-  notes: NoteMap;
-  onNoteClick: (stock: StockData, date: string) => void;
-}
-
-function SortedStockTable({ stocks, date, notes, onNoteClick }: SortedStockTableProps) {
-  const [sortField, setSortField] = useState<SortField>("firstLimitUpTime");
-  const [sortDir, setSortDir] = useState<SortDirection>("asc");
-
-  const handleSort = (field: SortField) => {
-    if (sortField === field) {
-      setSortDir((prev) => (prev === "asc" ? "desc" : "asc"));
-    } else {
-      setSortField(field);
-      setSortDir(field === "firstLimitUpTime" || field === "lastLimitUpTime" ? "asc" : "desc");
-    }
-  };
-
-  const sortedStocks = useMemo(() => {
-    const sorted = [...stocks].sort((a, b) => {
-      let cmp = 0;
-      switch (sortField) {
-        case "name":
-          cmp = a.name.localeCompare(b.name, "zh-CN");
-          break;
-        case "latest":
-          cmp = a.latest - b.latest;
-          break;
-        case "changeRate":
-          cmp = a.changeRate - b.changeRate;
-          break;
-        case "continueNum":
-          cmp = a.continueNum - b.continueNum;
-          break;
-        case "firstLimitUpTime":
-          cmp = (a.firstLimitUpTime || "99:99").localeCompare(b.firstLimitUpTime || "99:99");
-          break;
-        case "lastLimitUpTime":
-          cmp = (a.lastLimitUpTime || "99:99").localeCompare(b.lastLimitUpTime || "99:99");
-          break;
-      }
-      return sortDir === "asc" ? cmp : -cmp;
-    });
-    return sorted;
-  }, [stocks, sortField, sortDir]);
-
-  return (
-    <table className="w-full text-sm">
-      <thead>
-        <tr className="bg-slate-50 border-b border-slate-200">
-          <th
-            className="text-left pl-3 py-2 font-medium text-slate-500 cursor-pointer hover:text-slate-700 select-none"
-            onClick={() => handleSort("name")}
-          >
-            <span className="inline-flex items-center gap-1">
-              名称 <SortIcon field="name" sortField={sortField} sortDir={sortDir} />
-            </span>
-          </th>
-          <th
-            className="text-right py-2 font-medium text-slate-500 cursor-pointer hover:text-slate-700 select-none"
-            onClick={() => handleSort("latest")}
-          >
-            <span className="inline-flex items-center justify-end gap-1">
-              最新价 <SortIcon field="latest" sortField={sortField} sortDir={sortDir} />
-            </span>
-          </th>
-          <th
-            className="text-right py-2 font-medium text-slate-500 cursor-pointer hover:text-slate-700 select-none"
-            onClick={() => handleSort("changeRate")}
-          >
-            <span className="inline-flex items-center justify-end gap-1">
-              涨幅 <SortIcon field="changeRate" sortField={sortField} sortDir={sortDir} />
-            </span>
-          </th>
-          <th
-            className="text-right py-2 font-medium text-slate-500 cursor-pointer hover:text-slate-700 select-none"
-            onClick={() => handleSort("continueNum")}
-          >
-            <span className="inline-flex items-center justify-end gap-1">
-              板数 <SortIcon field="continueNum" sortField={sortField} sortDir={sortDir} />
-            </span>
-          </th>
-          <th
-            className="text-right py-2 font-medium text-slate-500 cursor-pointer hover:text-slate-700 select-none"
-            onClick={() => handleSort("firstLimitUpTime")}
-          >
-            <span className="inline-flex items-center justify-end gap-1">
-              首封 <SortIcon field="firstLimitUpTime" sortField={sortField} sortDir={sortDir} />
-            </span>
-          </th>
-          <th
-            className="text-right py-2 font-medium text-slate-500 cursor-pointer hover:text-slate-700 select-none"
-            onClick={() => handleSort("lastLimitUpTime")}
-          >
-            <span className="inline-flex items-center justify-end gap-1">
-              末封 <SortIcon field="lastLimitUpTime" sortField={sortField} sortDir={sortDir} />
-            </span>
-          </th>
-          <th
-            className="text-right pr-3 py-2 font-medium text-slate-500"
-          >
-            备注
-          </th>
-        </tr>
-      </thead>
-      <tbody className="divide-y divide-slate-100">
-        {sortedStocks.map((stock) => (
-          <tr
-            key={stock.code}
-            className="hover:bg-orange-50/30 transition-colors"
-          >
-            <td className="pl-3 py-1.5">
-              <div className="flex items-center gap-1.5">
-                <div>
-                  <div className="font-medium text-slate-900 text-xs leading-tight">{stock.name}</div>
-                  <div className="text-[10px] text-slate-400 font-mono leading-tight">{stock.code}</div>
-                </div>
-              </div>
-            </td>
-            <td className="text-right py-1.5 font-mono text-xs text-slate-700">
-              {stock.latest.toFixed(2)}
-            </td>
-            <td className="text-right py-1.5">
-              <span className="font-bold text-red-600 text-xs">
-                {stock.changeRate > 0 ? "+" : ""}
-                {stock.changeRate.toFixed(2)}%
-              </span>
-            </td>
-            <td className="text-right py-1.5">
-              <span
-                className={cn(
-                  "text-xs font-semibold",
-                  stock.continueNum >= 3
-                    ? "text-red-700"
-                    : stock.continueNum >= 2
-                    ? "text-orange-600"
-                    : "text-slate-500"
-                )}
-              >
-                {stock.high || `${stock.continueNum}板`}
-              </span>
-            </td>
-            <td className="text-right py-1.5 text-[11px] text-slate-500 font-mono">
-              {stock.firstLimitUpTime || "-"}
-            </td>
-            <td className="text-right py-1.5 text-[11px] text-slate-500 font-mono">
-              {stock.lastLimitUpTime || "-"}
-            </td>
-            <td className="text-right pr-3 py-1.5">
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onNoteClick(stock, date);
-                }}
-                className="inline-flex items-center justify-center w-7 h-7 rounded hover:bg-orange-100 transition-colors"
-              >
-                {notes[stock.code] ? (
-                  <span className="text-[10px] text-orange-600 font-medium max-w-[50px] truncate">
-                    {notes[stock.code]}
-                  </span>
-                ) : (
-                  <StickyNote className="w-3.5 h-3.5 text-slate-300 hover:text-orange-400" />
-                )}
-              </button>
-            </td>
-          </tr>
-        ))}
-        {sortedStocks.length === 0 && (
-          <tr>
-            <td colSpan={7} className="text-center py-6 text-slate-400 text-xs">
-              暂无涨停个股
-            </td>
-          </tr>
-        )}
-      </tbody>
-    </table>
-  );
-}
-
-export default function BlockDetailPage({
-  params,
+const SortableHeader = ({
+  field,
+  label,
+  currentField,
+  currentDir,
+  onSort,
+  justify = "start"
 }: {
-  params: Promise<{ code: string }>;
-}) {
-  const { code } = use(params);
+  field: SortField;
+  label: string;
+  currentField: SortField;
+  currentDir: SortDir;
+  onSort: (field: SortField) => void;
+  justify?: "start" | "end";
+}) => {
+  const isActive = currentField === field;
+  return (
+    <th
+      onClick={() => onSort(field)}
+      className={cn(
+        "px-2 py-1.5 text-xs font-medium text-slate-500 cursor-pointer hover:bg-slate-50 select-none",
+        justify === "end" ? "text-right" : "text-left"
+      )}
+    >
+      <span className="inline-flex items-center gap-1">
+        {label}
+        {isActive ? (
+          currentDir === "asc" ? (
+            <SortAsc className="w-3 h-3 text-orange-600" />
+          ) : (
+            <SortDesc className="w-3 h-3 text-orange-600" />
+          )
+        ) : (
+          <span className="w-3 h-3" />
+        )}
+      </span>
+    </th>
+  );
+};
+
+export default function BlockDetailPage() {
+  const params = useParams();
   const router = useRouter();
-  const [data, setData] = useState<DayBlockData[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isLoadingMore, setIsLoadingMore] = useState(false);
-  const [error, setError] = useState<Error | null>(null);
-  const [hasMore, setHasMore] = useState(true);
-  const [blockName, setBlockName] = useState("");
+  const code = params.code as string;
 
-  const { authenticated, loading: authLoading } = useAuth();
-  const { fetchNote, saveNote, saving } = useNotes();
-  const [notes, setNotes] = useState<DayNotes>({});
-  const [drawer, setDrawer] = useState<NoteDrawerState>({
-    open: false,
-    stockCode: "",
-    stockName: "",
-    stockDate: "",
-    content: "",
-    originalContent: "",
-  });
+  const { authenticated, username, loading: authLoading, logout } = useAuth();
+  const { data, loading, error, hasMore, loadMore, allBlocks } = useBlockDetail(code);
+  const { notes, loading: notesLoading, saveNote, getNote, preloadNotes } = useNotes();
 
+  // 所有去重板块列表，按字母排序
+  const uniqueBlocks = useMemo(() => {
+    const blockMap = new Map<string, { code: string; name: string }>();
+    allBlocks.forEach(block => {
+      if (!blockMap.has(block.code)) {
+        blockMap.set(block.code, { code: block.code, name: block.name });
+      }
+    });
+    return Array.from(blockMap.values()).sort((a, b) => a.name.localeCompare(b.name));
+  }, [allBlocks]);
+
+  // 板块切换drawer状态
+  const [blockPickerOpen, setBlockPickerOpen] = useState(false);
+
+  // 备注drawer状态
+  const [noteDrawerOpen, setNoteDrawerOpen] = useState(false);
+  const [currentNoteStock, setCurrentNoteStock] = useState<{
+    stock: StockData;
+    date: string;
+    blockName: string;
+  } | null>(null);
+  const [noteContent, setNoteContent] = useState("");
+  const [savingNote, setSavingNote] = useState(false);
+
+  // 排序状态
+  const [sortField, setSortField] = useState<SortField>("changeRate");
+  const [sortDir, setSortDir] = useState<SortDir>("desc");
+
+  // 登录检查
   useEffect(() => {
     if (!authLoading && !authenticated) {
-      window.location.href = "/";
+      router.push("/");
     }
-  }, [authLoading, authenticated]);
+  }, [authLoading, authenticated, router]);
 
-  const loadAllNotes = useCallback(async (dayDataList: DayBlockData[]) => {
-    const newNotes: DayNotes = {};
-    for (const dayData of dayDataList) {
-      newNotes[dayData.date] = {};
-      for (const stock of dayData.stocks) {
-        const note = await fetchNote(stock.code, dayData.date);
-        newNotes[dayData.date][stock.code] = note;
-      }
-    }
-    setNotes((prev) => ({ ...prev, ...newNotes }));
-  }, [fetchNote]);
-
+  // 预加载所有备注
   useEffect(() => {
-    setIsLoading(true);
-    setError(null);
-    fetchBlockDetail(code)
-      .then(async (result) => {
-        setData(result.data);
-        setHasMore(result.hasMore);
-        if (result.data.length > 0) {
-          setBlockName(result.data[0].block.name);
-        }
-        await loadAllNotes(result.data);
-      })
-      .catch((err) =>
-        setError(err instanceof Error ? err : new Error("Unknown error"))
-      )
-      .finally(() => setIsLoading(false));
-  }, [code, loadAllNotes]);
-
-  const loadMore = useCallback(async () => {
-    if (isLoadingMore || !hasMore || data.length === 0) return;
-    setIsLoadingMore(true);
-    try {
-      const lastDate = data[data.length - 1].date;
-      const result = await fetchBlockDetail(code, lastDate, 10);
-      setData((prev) => [...prev, ...result.data]);
-      setHasMore(result.hasMore);
-      await loadAllNotes(result.data);
-    } catch (err) {
-      setError(err instanceof Error ? err : new Error("Unknown error"));
-    } finally {
-      setIsLoadingMore(false);
+    if (data.length > 0 && authenticated && username) {
+      const stockKeyList: Array<{ stockCode: string; stockDate: string }> = [];
+      data.forEach(dayData => {
+        dayData.stocks.forEach(stock => {
+          stockKeyList.push({ stockCode: stock.code, stockDate: dayData.date });
+        });
+      });
+      preloadNotes(stockKeyList);
     }
-  }, [isLoadingMore, hasMore, data, code, loadAllNotes]);
+  }, [data, authenticated, username, preloadNotes]);
+
+  const handleSort = useCallback((field: SortField) => {
+    if (sortField === field) {
+      setSortDir(prev => prev === "asc" ? "desc" : "asc");
+    } else {
+      setSortField(field);
+      setSortDir("desc");
+    }
+  }, [sortField]);
+
+  const sortStocks = useCallback((stocks: StockData[]) => {
+    return [...stocks].sort((a, b) => {
+      let aVal: number | string = 0;
+      let bVal: number | string = 0;
+      switch (sortField) {
+        case "name":
+          aVal = a.name;
+          bVal = b.name;
+          break;
+        case "latest":
+          aVal = a.latest;
+          bVal = b.latest;
+          break;
+        case "changeRate":
+          aVal = a.changeRate;
+          bVal = b.changeRate;
+          break;
+        case "continueNum":
+          aVal = a.continueNum;
+          bVal = b.continueNum;
+          break;
+        case "firstLimitUpTime":
+          aVal = a.firstLimitUpTime;
+          bVal = b.firstLimitUpTime;
+          break;
+        case "lastLimitUpTime":
+          aVal = a.lastLimitUpTime;
+          bVal = b.lastLimitUpTime;
+          break;
+      }
+      if (typeof aVal === "string") {
+        return sortDir === "asc" ? aVal.localeCompare(bVal as string) : (bVal as string).localeCompare(aVal);
+      }
+      return sortDir === "asc" ? (aVal as number) - (bVal as number) : (bVal as number) - (aVal as number);
+    });
+  }, [sortField, sortDir]);
 
   const formatDate = (dateStr: string) => {
     try {
-      const d = parseISO(dateStr);
-      return format(d, "yyyy年MM月dd日 EEEE", { locale: zhCN });
+      const date = parseISO(dateStr);
+      const weekday = format(date, "EEEE", { locale: zhCN });
+      const formattedDate = format(date, "yyyy年MM月dd日", { locale: zhCN });
+      return `${formattedDate} ${weekday}`;
     } catch {
       return dateStr;
     }
   };
 
-  const handleNoteClick = async (stock: StockData, date: string) => {
-    const existingNote = notes[date]?.[stock.code] || null;
-    setDrawer({
-      open: true,
-      stockCode: stock.code,
-      stockName: stock.name,
-      stockDate: date,
-      content: existingNote || "",
-      originalContent: existingNote || "",
-    });
+  const openNoteDrawer = (stock: StockData, date: string, blockName: string) => {
+    const existingNote = getNote(stock.code, date);
+    setCurrentNoteStock({ stock, date, blockName });
+    setNoteContent(existingNote || "");
+    setNoteDrawerOpen(true);
   };
 
-  const handleSave = async () => {
-    const success = await saveNote(
-      drawer.stockCode,
-      drawer.stockDate,
-      drawer.content
-    );
-    if (success) {
-      setNotes((prev) => ({
-        ...prev,
-        [drawer.stockDate]: {
-          ...prev[drawer.stockDate],
-          [drawer.stockCode]: drawer.content || null,
-        },
-      }));
-      setDrawer((prev) => ({ ...prev, open: false }));
+  const handleSaveNote = async () => {
+    if (!currentNoteStock || !username) return;
+    setSavingNote(true);
+    try {
+      await saveNote(currentNoteStock.stock.code, currentNoteStock.date, noteContent);
+      setNoteDrawerOpen(false);
+      setCurrentNoteStock(null);
+    } catch (err) {
+      console.error("保存备注失败", err);
+    } finally {
+      setSavingNote(false);
     }
   };
 
-  const handleCancel = () => {
-    setDrawer((prev) => ({ ...prev, open: false }));
+  const handleBlockSelect = (selectedCode: string) => {
+    setBlockPickerOpen(false);
+    router.push(`/block-history/${selectedCode}`);
   };
 
-  if (authLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50">
-        <div className="w-8 h-8 border-3 border-slate-200 border-t-orange-500 rounded-full animate-spin" />
-      </div>
-    );
-  }
-
-  if (isLoading) {
-    return (
-      <div className="min-h-screen bg-slate-50">
-        <header className="sticky top-0 z-50 bg-white border-b border-slate-200">
-          <div className="max-w-5xl mx-auto px-4 py-3">
-            <div className="flex items-center gap-3">
-              <Skeleton className="h-8 w-8" />
-              <Skeleton className="h-5 w-32" />
-            </div>
-          </div>
-        </header>
-        <main className="max-w-5xl mx-auto px-4 py-4 space-y-4">
-          {Array.from({ length: 3 }).map((_, i) => (
-            <div key={i} className="space-y-2">
-              <Skeleton className="h-4 w-60" />
-              <Skeleton className="h-40 w-full" />
-            </div>
-          ))}
-        </main>
-      </div>
-    );
-  }
-
-  if (error || data.length === 0) {
-    return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-        <div className="text-center">
-          <p className="text-red-600 mb-3 text-sm">加载失败或板块不存在</p>
-          <Link href="/block-history">
-            <Button variant="outline" size="sm">
-              <ArrowLeft className="w-3.5 h-3.5 mr-1.5" />
-              返回列表
-            </Button>
-          </Link>
-        </div>
-      </div>
-    );
-  }
+  const currentBlockName = useMemo(() => {
+    if (data.length > 0) {
+      return data[0].block.name;
+    }
+    const block = uniqueBlocks.find(b => b.code === code);
+    return block ? block.name : code;
+  }, [data, uniqueBlocks, code]);
 
   return (
     <div className="min-h-screen bg-slate-50">
       {/* Header */}
       <header className="sticky top-0 z-50 bg-white border-b border-slate-200">
         <div className="max-w-5xl mx-auto px-4 py-3">
-          <div className="flex items-center gap-3">
-            <Link href="/block-history">
-              <Button variant="ghost" size="icon" className="h-7 w-7">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => router.back()}
+                className="text-slate-500 hover:text-slate-900 h-8 w-8 p-0"
+              >
                 <ArrowLeft className="w-4 h-4" />
               </Button>
-            </Link>
-            <TrendingUp className="w-4 h-4 text-orange-600" />
-            <h1 className="text-lg font-bold text-slate-900">{blockName}</h1>
+              <div className="flex items-center gap-2">
+                <TrendingUp className="w-5 h-5 text-orange-600" />
+                <h1 className="text-lg font-bold text-slate-900">{currentBlockName}</h1>
+                <Sheet open={blockPickerOpen} onOpenChange={setBlockPickerOpen}>
+                  <SheetTrigger asChild>
+                    <Button variant="ghost" size="sm" className="h-7 px-2 text-slate-400 hover:text-slate-700">
+                      <ChevronDown className="w-3.5 h-3.5 mr-1" />
+                      切换板块
+                    </Button>
+                  </SheetTrigger>
+                  <SheetContent side="left" className="w-[320px] sm:w-[400px]">
+                    <SheetHeader>
+                      <SheetTitle>选择板块</SheetTitle>
+                    </SheetHeader>
+                    <div className="mt-4 max-h-[calc(100vh-120px)] overflow-y-auto">
+                      <div className="space-y-1">
+                        {uniqueBlocks.map((block) => (
+                          <button
+                            key={block.code}
+                            onClick={() => handleBlockSelect(block.code)}
+                            className={cn(
+                              "w-full text-left px-3 py-2.5 text-sm rounded-lg transition-colors",
+                              block.code === code
+                                ? "bg-orange-50 text-orange-700 font-medium"
+                                : "hover:bg-slate-100 text-slate-700"
+                            )}
+                          >
+                            <div className="flex items-center justify-between">
+                              <span className="truncate">{block.name}</span>
+                              <span className="text-xs text-slate-400 font-mono">{block.code}</span>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </SheetContent>
+                </Sheet>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              {authenticated && username && (
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-slate-500">{username}</span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={logout}
+                    className="text-slate-400 hover:text-red-500 h-7 w-7 p-0"
+                  >
+                    <LogOut className="w-3.5 h-3.5" />
+                  </Button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </header>
 
       {/* Main Content */}
       <main className="max-w-5xl mx-auto px-4 py-4">
-        <div className="space-y-4">
-          {data.map((dayData) => (
-            <div key={dayData.date}>
-              {/* Date Summary Line */}
-              <div className="flex items-center gap-2 mb-1.5 text-xs">
-                <span className="font-semibold text-slate-700">
-                  {formatDate(dayData.date)}
-                </span>
-                <span className="text-slate-300">|</span>
-                <span className="text-orange-600 font-medium">
-                  涨停{dayData.block.limitUpNum}
-                </span>
-                {dayData.block.continuousPlateNum > 0 && (
-                  <>
-                    <span className="text-slate-300">|</span>
-                    <span className="text-red-600 font-medium">
-                      连板{dayData.block.continuousPlateNum}
-                    </span>
-                  </>
-                )}
-                {dayData.block.high && dayData.block.high !== "0" && (
-                  <>
-                    <span className="text-slate-300">|</span>
-                    <span className="text-purple-600 font-medium">
-                      最高{dayData.block.high}
-                    </span>
-                  </>
-                )}
-              </div>
+        {error && (
+          <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 text-sm">
+            加载失败: {error.message}
+          </div>
+        )}
 
-              {/* Stock Table - no rounded corners */}
-              <div className="bg-white border border-slate-200">
-                <SortedStockTable
-                  stocks={dayData.stocks}
-                  date={dayData.date}
-                  notes={notes[dayData.date] || {}}
-                  onNoteClick={handleNoteClick}
-                />
+        <div className="space-y-8">
+          {data.map((dayData) => {
+            const sortedStocks = sortStocks(dayData.stocks);
+            return (
+              <div key={dayData.date}>
+                {/* Date and Summary */}
+                <div className="flex items-center gap-2 mb-3">
+                  <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                  <span className="text-sm font-semibold text-slate-700">
+                    {formatDate(dayData.date)}
+                  </span>
+                  <span className="text-xs text-slate-400">
+                    涨停{dayData.block.limitUpNum} · 连板{dayData.block.continuousPlateNum} · 最高{dayData.block.high}
+                  </span>
+                </div>
+
+                {/* Stock Table */}
+                <div className="bg-white border border-slate-200 overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-slate-50 border-b border-slate-200">
+                      <tr>
+                        <SortableHeader
+                          field="name"
+                          label="股票名称"
+                          currentField={sortField}
+                          currentDir={sortDir}
+                          onSort={handleSort}
+                        />
+                        <SortableHeader
+                          field="latest"
+                          label="最新价"
+                          currentField={sortField}
+                          currentDir={sortDir}
+                          onSort={handleSort}
+                          justify="end"
+                        />
+                        <SortableHeader
+                          field="changeRate"
+                          label="涨幅"
+                          currentField={sortField}
+                          currentDir={sortDir}
+                          onSort={handleSort}
+                          justify="end"
+                        />
+                        <SortableHeader
+                          field="continueNum"
+                          label="板数"
+                          currentField={sortField}
+                          currentDir={sortDir}
+                          onSort={handleSort}
+                          justify="end"
+                        />
+                        <SortableHeader
+                          field="firstLimitUpTime"
+                          label="首封"
+                          currentField={sortField}
+                          currentDir={sortDir}
+                          onSort={handleSort}
+                          justify="end"
+                        />
+                        <SortableHeader
+                          field="lastLimitUpTime"
+                          label="末封"
+                          currentField={sortField}
+                          currentDir={sortDir}
+                          onSort={handleSort}
+                          justify="end"
+                        />
+                        <th className="px-2 py-1.5 text-xs font-medium text-slate-500 text-center w-16">
+                          备注
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {sortedStocks.map((stock) => {
+                        const note = getNote(stock.code, dayData.date);
+                        return (
+                          <tr key={stock.code} className="hover:bg-slate-50/50">
+                            <td className="px-2 py-1.5">
+                              <div className="flex items-center gap-1.5">
+                                <span className="font-medium text-sm text-slate-900 truncate max-w-[120px]">
+                                  {stock.name}
+                                </span>
+                                <span className="text-[10px] text-slate-400 font-mono">
+                                  {stock.code}
+                                </span>
+                              </div>
+                            </td>
+                            <td className="px-2 py-1.5 text-right">
+                              <span className="font-mono text-sm text-slate-700">
+                                {stock.latest.toFixed(2)}
+                              </span>
+                            </td>
+                            <td className="px-2 py-1.5 text-right">
+                              <span
+                                className={cn(
+                                  "font-mono text-sm",
+                                  stock.changeRate > 0
+                                    ? "text-red-600"
+                                    : stock.changeRate < 0
+                                    ? "text-green-600"
+                                    : "text-slate-400"
+                                )}
+                              >
+                                {stock.changeRate > 0 ? "+" : ""}
+                                {stock.changeRate.toFixed(2)}%
+                              </span>
+                            </td>
+                            <td className="px-2 py-1.5 text-right">
+                              <span className="text-sm">
+                                <span className={cn(
+                                  "font-mono",
+                                  stock.continueNum === 1
+                                    ? "text-slate-500"
+                                    : "text-purple-600 font-medium"
+                                )}>
+                                  {stock.continueNum}
+                                </span>
+                                <span className="text-[10px] text-slate-400 ml-0.5">板</span>
+                              </span>
+                              {stock.high && stock.high !== "0" && (
+                                <span className="text-[10px] text-slate-400 ml-1">
+                                  /{stock.high}
+                                </span>
+                              )}
+                            </td>
+                            <td className="px-2 py-1.5 text-right">
+                              <span className="font-mono text-xs text-slate-500">
+                                {stock.firstLimitUpTime}
+                              </span>
+                            </td>
+                            <td className="px-2 py-1.5 text-right">
+                              <span className="font-mono text-xs text-slate-500">
+                                {stock.lastLimitUpTime}
+                              </span>
+                            </td>
+                            <td className="px-2 py-1.5 text-center">
+                              <button
+                                onClick={() => openNoteDrawer(stock, dayData.date, dayData.block.name)}
+                                className="inline-flex items-center justify-center h-6 px-1.5 rounded hover:bg-slate-100 text-slate-400 hover:text-slate-700 transition-colors"
+                              >
+                                {note ? (
+                                  <span className="text-xs text-slate-700 truncate max-w-[60px]" title={note}>
+                                    {note.length > 8 ? note.substring(0, 8) + "…" : note}
+                                  </span>
+                                ) : (
+                                  <StickyNote className="w-3.5 h-3.5" />
+                                )}
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
+
+        {/* Loading */}
+        {loading && (
+          <div className="mt-6 bg-white border border-slate-200 overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-slate-50 border-b border-slate-200">
+                <tr>
+                  <th className="px-2 py-1.5 text-xs font-medium text-slate-500 w-40" />
+                  <th className="px-2 py-1.5 text-xs font-medium text-slate-500 w-20" />
+                  <th className="px-2 py-1.5 text-xs font-medium text-slate-500 w-20" />
+                  <th className="px-2 py-1.5 text-xs font-medium text-slate-500 w-24" />
+                  <th className="px-2 py-1.5 text-xs font-medium text-slate-500 w-20" />
+                  <th className="px-2 py-1.5 text-xs font-medium text-slate-500 w-20" />
+                  <th className="px-2 py-1.5 text-xs font-medium text-slate-500 w-16" />
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {Array.from({ length: 8 }).map((_, i) => (
+                  <tr key={i}>
+                    <td className="px-2 py-1.5">
+                      <Skeleton className="h-4 w-28" />
+                    </td>
+                    <td className="px-2 py-1.5">
+                      <Skeleton className="h-4 w-12" />
+                    </td>
+                    <td className="px-2 py-1.5">
+                      <Skeleton className="h-4 w-10" />
+                    </td>
+                    <td className="px-2 py-1.5">
+                      <Skeleton className="h-4 w-16" />
+                    </td>
+                    <td className="px-2 py-1.5">
+                      <Skeleton className="h-4 w-12" />
+                    </td>
+                    <td className="px-2 py-1.5">
+                      <Skeleton className="h-4 w-12" />
+                    </td>
+                    <td className="px-2 py-1.5">
+                      <Skeleton className="h-4 w-10" />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
 
         {/* Load More */}
         <div className="mt-6 py-4 flex justify-center">
-          {isLoadingMore && (
-            <div className="flex items-center gap-2 text-slate-400">
-              <div className="w-4 h-4 border-2 border-slate-200 border-t-orange-500 rounded-full animate-spin" />
-              <span className="text-xs">加载中...</span>
-            </div>
-          )}
-          {hasMore && !isLoadingMore && (
+          {hasMore && !loading && (
             <Button
               onClick={loadMore}
               variant="outline"
               size="sm"
               className="text-slate-600 border-slate-200"
             >
-              <RefreshCw className="w-3.5 h-3.5 mr-1.5" />
+              <Menu className="w-3.5 h-3.5 mr-1.5" />
               加载更多
             </Button>
           )}
@@ -500,84 +523,63 @@ export default function BlockDetailPage({
             <div className="text-xs text-slate-400">已加载全部数据</div>
           )}
         </div>
+
+        {/* Initial Loading */}
+        {loading && data.length === 0 && (
+          <div className="flex flex-col items-center justify-center py-20">
+            <div className="w-10 h-10 border-3 border-slate-200 border-t-orange-500 rounded-full animate-spin" />
+            <p className="mt-3 text-sm text-slate-400">加载中...</p>
+          </div>
+        )}
       </main>
 
       {/* Note Drawer */}
-      <div
-        className={cn(
-          "fixed inset-0 z-[100] transition-all duration-300",
-          drawer.open ? "visible" : "invisible"
-        )}
-      >
-        <div
-          className={cn(
-            "absolute inset-0 bg-black/40 transition-opacity duration-300",
-            drawer.open ? "opacity-100" : "opacity-0"
-          )}
-          onClick={handleCancel}
-        />
-        <div
-          className={cn(
-            "absolute bottom-0 left-0 right-0 bg-white shadow-2xl transition-transform duration-300 max-h-[70vh] flex flex-col",
-            drawer.open ? "translate-y-0" : "translate-y-full"
-          )}
-        >
-          {/* Drawer Header */}
-          <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
-            <div className="flex items-center gap-2">
-              <StickyNote className="w-4 h-4 text-orange-600" />
-              <div>
-                <span className="font-semibold text-slate-900 text-sm">
-                  {drawer.stockName}
-                </span>
-                <span className="text-xs text-slate-400 font-mono ml-2">
-                  {drawer.stockCode} · {drawer.stockDate}
-                </span>
-              </div>
-            </div>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7 text-slate-400 hover:text-slate-600"
-              onClick={handleCancel}
-            >
-              <X className="w-4 h-4" />
-            </Button>
-          </div>
-
-          {/* Drawer Content */}
-          <div className="flex-1 overflow-y-auto p-4">
-            <Textarea
-              placeholder="添加备注..."
-              value={drawer.content}
-              onChange={(e) =>
-                setDrawer((prev) => ({ ...prev, content: e.target.value }))
-              }
-              className="min-h-[120px] resize-none border-slate-200 focus:border-orange-300 focus:ring-orange-200 text-sm"
-            />
-          </div>
-
-          {/* Drawer Footer */}
-          <div className="flex items-center justify-end gap-2 px-4 py-3 border-t border-slate-100 bg-slate-50/50">
-            <Button variant="outline" size="sm" onClick={handleCancel}>
-              取消
-            </Button>
-            <Button
-              size="sm"
-              onClick={handleSave}
-              disabled={saving}
-              className="bg-orange-600 hover:bg-orange-700 text-white"
-            >
-              {saving ? (
-                <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin mr-1.5" />
-              ) : (
-                <Save className="w-3.5 h-3.5 mr-1.5" />
+      <Drawer open={noteDrawerOpen} onOpenChange={setNoteDrawerOpen}>
+        <DrawerContent>
+          <DrawerHeader>
+            <DrawerTitle>
+              {currentNoteStock && (
+                <div className="flex items-center gap-2">
+                  <span className="font-semibold">{currentNoteStock.stock.name}</span>
+                  <span className="text-xs text-slate-400 font-mono">
+                    {currentNoteStock.stock.code}
+                  </span>
+                  <span className="text-xs text-slate-400">
+                    {currentNoteStock.date}
+                  </span>
+                </div>
               )}
-              保存
-            </Button>
+            </DrawerTitle>
+          </DrawerHeader>
+          <div className="px-4 pb-4">
+            <Textarea
+              value={noteContent}
+              onChange={(e) => setNoteContent(e.target.value)}
+              placeholder="输入备注内容..."
+              className="min-h-[120px] resize-none"
+              autoFocus
+            />
+            <div className="flex items-center justify-end gap-2 mt-4">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setNoteDrawerOpen(false)}
+                disabled={savingNote}
+              >
+                取消
+              </Button>
+              <Button
+                size="sm"
+                onClick={handleSaveNote}
+                disabled={savingNote}
+                className="bg-orange-600 hover:bg-orange-700"
+              >
+                {savingNote ? "保存中..." : "保存"}
+              </Button>
+            </div>
           </div>
-        </div>
-      </div>
+        </DrawerContent>
+      </Drawer>
     </div>
   );
 }
