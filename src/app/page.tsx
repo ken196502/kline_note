@@ -31,8 +31,8 @@ export default function LoginPage() {
         return;
       }
 
-      router.push("/block-history");
-      router.refresh();
+      // 登录成功，直接跳转
+      window.location.href = "/block-history";
     } catch {
       setError("网络错误，请重试");
     } finally {
