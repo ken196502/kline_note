@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useBlockHistory } from "@/hooks/use-block-history";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import { TrendingUp, Calendar, RefreshCw, LogOut } from "lucide-react";
+import { TrendingUp, Calendar, RefreshCw, LogOut, Download } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import { zhCN } from "date-fns/locale";
 import { cn } from "@/lib/utils";
@@ -48,6 +48,36 @@ export default function BlockHistoryPage() {
               {data.length > 0 && (
                 <span className="text-xs text-slate-400">{data.length}天数据</span>
               )}
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={async () => {
+                  try {
+                    const res = await fetch("/api/export-notes");
+                    if (res.ok) {
+                      const blob = await res.blob();
+                      const url = window.URL.createObjectURL(blob);
+                      const a = document.createElement("a");
+                      a.href = url;
+                      const contentDisposition = res.headers.get("Content-Disposition");
+                      const filename = contentDisposition
+                        ? contentDisposition.split("filename=")[1]?.replace(/"/g, "") || "stock_notes.csv"
+                        : "stock_notes.csv";
+                      a.download = filename;
+                      document.body.appendChild(a);
+                      a.click();
+                      document.body.removeChild(a);
+                      window.URL.revokeObjectURL(url);
+                    }
+                  } catch (e) {
+                    console.error("下载失败", e);
+                  }
+                }}
+                className="text-slate-500 hover:text-orange-600 h-7"
+              >
+                <Download className="w-3.5 h-3.5 mr-1" />
+                备份下载
+              </Button>
               {authenticated && username && (
                 <div className="flex items-center gap-2">
                   <span className="text-sm text-slate-500">{username}</span>
