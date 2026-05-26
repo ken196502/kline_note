@@ -4,28 +4,15 @@ import { useBlockHistory } from "@/hooks/use-block-history";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetDescription,
-} from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
-import { ChevronRight, TrendingUp, Calendar, RefreshCw, X } from "lucide-react";
+import { ChevronRight, TrendingUp, Calendar, RefreshCw } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import { zhCN } from "date-fns/locale";
 import { cn } from "@/lib/utils";
-import { useState } from "react";
-import { BlockStockList } from "@/components/block-stock-list";
-import type { BlockData, StockData } from "@/types/block-data";
+import Link from "next/link";
 
 export default function BlockHistoryPage() {
   const { data, loading, error, hasMore, loadMore } = useBlockHistory(5);
-  const [selectedBlock, setSelectedBlock] = useState<{
-    block: BlockData;
-    stocks: StockData[];
-  } | null>(null);
 
   const formatDate = (dateStr: string) => {
     try {
@@ -36,10 +23,6 @@ export default function BlockHistoryPage() {
     } catch {
       return dateStr;
     }
-  };
-
-  const handleBlockClick = (block: BlockData, stocks: StockData[]) => {
-    setSelectedBlock({ block, stocks });
   };
 
   return (
@@ -103,17 +86,12 @@ export default function BlockHistoryPage() {
 
               {/* Blocks Grid */}
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {dayData.blocks.map((block) => {
-                  const blockStocks = dayData.stocks.filter(
-                    (s) => s.blockCode === block.code
-                  );
-
-                  return (
-                    <Card
-                      key={`${dayData.date}-${block.code}`}
-                      className="overflow-hidden border-0 shadow-lg shadow-slate-900/5 bg-white/80 backdrop-blur-sm hover:shadow-xl hover:shadow-orange-500/10 transition-all duration-300 cursor-pointer group"
-                      onClick={() => handleBlockClick(block, blockStocks)}
-                    >
+                {dayData.blocks.map((block) => (
+                  <Link
+                    key={`${dayData.date}-${block.code}`}
+                    href={`/block-history/${dayData.date}/${block.code}`}
+                  >
+                    <Card className="overflow-hidden border-0 shadow-lg shadow-slate-900/5 bg-white/80 backdrop-blur-sm hover:shadow-xl hover:shadow-orange-500/10 transition-all duration-300 cursor-pointer group h-full">
                       <div className="px-5 py-4">
                         <div className="flex items-start justify-between mb-3">
                           <div className="flex-1">
@@ -124,10 +102,10 @@ export default function BlockHistoryPage() {
                               {block.code}
                             </div>
                           </div>
-                          <ChevronRight className="w-5 h-5 text-slate-300 group-hover:text-orange-500 transition-colors" />
+                          <ChevronRight className="w-5 h-5 text-slate-300 group-hover:text-orange-500 transition-colors flex-shrink-0" />
                         </div>
 
-                        <div className="flex items-center gap-2 mb-3">
+                        <div className="flex items-center gap-2 mb-3 flex-wrap">
                           <Badge
                             variant="default"
                             className="bg-orange-500 hover:bg-orange-600 text-white font-semibold px-2.5 py-1 text-xs"
@@ -170,8 +148,8 @@ export default function BlockHistoryPage() {
                         </div>
                       </div>
                     </Card>
-                  );
-                })}
+                  </Link>
+                ))}
               </div>
             </div>
           ))}
@@ -224,18 +202,6 @@ export default function BlockHistoryPage() {
           </div>
         )}
       </main>
-
-      {/* Stock List Sheet */}
-      <Sheet open={!!selectedBlock} onOpenChange={(open) => !open && setSelectedBlock(null)}>
-        <SheetContent side="right" className="w-full sm:max-w-2xl p-0">
-          {selectedBlock && (
-            <BlockStockList
-              block={selectedBlock.block}
-              stocks={selectedBlock.stocks}
-            />
-          )}
-        </SheetContent>
-      </Sheet>
     </div>
   );
 }
