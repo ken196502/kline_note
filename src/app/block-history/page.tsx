@@ -9,7 +9,6 @@ import { TrendingUp, Calendar, RefreshCw, LogOut, Download } from "lucide-react"
 import { format, parseISO } from "date-fns";
 import { zhCN } from "date-fns/locale";
 import { cn } from "@/lib/utils";
-import Link from "next/link";
 import { useAuth } from "@/hooks/use-auth";
 
 export default function BlockHistoryPage() {
@@ -121,9 +120,13 @@ export default function BlockHistoryPage() {
               {/* Tile Grid */}
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
                 {dayData.blocks.map((block) => (
-                  <Link
+                  <a
                     key={`${dayData.date}-${block.code}`}
                     href={`/block-history/${block.code}`}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      router.push(`/block-history/${block.code}`);
+                    }}
                     className="bg-white border border-slate-200 px-2.5 py-2 hover:bg-orange-50/50 transition-colors group"
                   >
                     <div className="flex items-center gap-1.5 mb-0.5">
@@ -152,7 +155,7 @@ export default function BlockHistoryPage() {
                         {block.change.toFixed(2)}%
                       </span>
                     </div>
-                  </Link>
+                  </a>
                 ))}
               </div>
             </div>

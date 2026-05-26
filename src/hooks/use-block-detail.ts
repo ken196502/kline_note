@@ -12,7 +12,7 @@ interface UseBlockDetailResult {
   allBlocks: BlockData[];
 }
 
-export function useBlockDetail(code: string, initialDays: number = 10): UseBlockDetailResult {
+export function useBlockDetail(code: string, initialDays: number = 3): UseBlockDetailResult {
   const [data, setData] = useState<DayBlockDetailData[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);

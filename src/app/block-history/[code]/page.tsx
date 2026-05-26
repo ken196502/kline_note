@@ -4,6 +4,7 @@ import { useEffect, useState, useMemo, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { format, parseISO } from "date-fns";
 import { zhCN } from "date-fns/locale";
+import { pinyin } from "pinyin-pro";
 import {
   ArrowLeft,
   TrendingUp,
@@ -151,7 +152,7 @@ export default function BlockDetailPage() {
   const { data, loading, error, hasMore, loadMore, allBlocks } = useBlockDetail(code);
   const { notes, loading: notesLoading, saveNote, getNote, preloadNotes } = useNotes();
 
-  // 按首字母分组的板块列表（类似通讯录）
+  // 按拼音首字母分组的板块列表（类似通讯录）
   const groupedBlocks = useMemo(() => {
     const blockMap = new Map<string, { code: string; name: string }>();
     allBlocks.forEach(block => {
@@ -159,16 +160,22 @@ export default function BlockDetailPage() {
         blockMap.set(block.code, { code: block.code, name: block.name });
       }
     });
-    const sortedBlocks = Array.from(blockMap.values()).sort((a, b) => a.name.localeCompare(b.name));
     
-    // 按首字母分组
+    // 按拼音排序
+    const sortedBlocks = Array.from(blockMap.values()).sort((a, b) => {
+      const pinyinA = pinyin(a.name, { pattern: 'first', toneType: 'none' }).toLowerCase();
+      const pinyinB = pinyin(b.name, { pattern: 'first', toneType: 'none' }).toLowerCase();
+      return pinyinA.localeCompare(pinyinB);
+    });
+    
+    // 按拼音首字母分组
     const groups: { [key: string]: Array<{ code: string; name: string }> } = {};
     sortedBlocks.forEach(block => {
-      const firstChar = block.name.charAt(0).toUpperCase();
-      if (!groups[firstChar]) {
-        groups[firstChar] = [];
+      const firstLetter = pinyin(block.name, { pattern: 'first', toneType: 'none' }).charAt(0).toUpperCase();
+      if (!groups[firstLetter]) {
+        groups[firstLetter] = [];
       }
-      groups[firstChar].push(block);
+      groups[firstLetter].push(block);
     });
     return groups;
   }, [allBlocks]);
@@ -306,6 +313,9 @@ export default function BlockDetailPage() {
     return block ? block.name : code;
   }, [data, allBlocks, code]);
 
+  // 初始加载中（没有数据时的loading）
+  const isInitialLoading = loading && data.length === 0;
+
   return (
     <div className="min-h-screen bg-slate-50">
       {/* Header */}
@@ -393,6 +403,14 @@ export default function BlockDetailPage() {
         {error && (
           <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 text-sm">
             加载失败: {error.message}
+          </div>
+        )}
+
+        {/* 初始加载中 */}
+        {isInitialLoading && (
+          <div className="flex flex-col items-center justify-center py-20">
+            <div className="w-10 h-10 border-3 border-slate-200 border-t-orange-500 rounded-full animate-spin" />
+            <p className="mt-3 text-sm text-slate-400">正在加载 {currentBlockName} 数据...</p>
           </div>
         )}
 
@@ -564,45 +582,38 @@ export default function BlockDetailPage() {
           })}
         </div>
 
-        {/* Loading */}
-        {loading && (
+        {/* Loading - 加载更多时的骨架屏 */}
+        {loading && data.length > 0 && (
           <div className="mt-6 bg-white border border-slate-200 overflow-x-auto">
-            <table className="w-full text-sm">
+            <div className="px-4 py-3 flex items-center gap-2">
+              <Calendar className="w-3.5 h-3.5 text-slate-400" />
+              <Skeleton className="h-4 w-32" />
+              <Skeleton className="h-3 w-24" />
+            </div>
+            <table className="w-full text-sm table-fixed">
               <thead className="bg-slate-50 border-b border-slate-200">
                 <tr>
-                  <th className="px-2 py-1.5 text-xs font-medium text-slate-500 w-40" />
+                  <th className="px-2 py-1.5 text-xs font-medium text-slate-500 w-32" />
+                  <th className="px-2 py-1.5 text-xs font-medium text-slate-500 w-16" />
+                  <th className="px-2 py-1.5 text-xs font-medium text-slate-500 w-16" />
                   <th className="px-2 py-1.5 text-xs font-medium text-slate-500 w-20" />
-                  <th className="px-2 py-1.5 text-xs font-medium text-slate-500 w-20" />
-                  <th className="px-2 py-1.5 text-xs font-medium text-slate-500 w-24" />
-                  <th className="px-2 py-1.5 text-xs font-medium text-slate-500 w-20" />
-                  <th className="px-2 py-1.5 text-xs font-medium text-slate-500 w-20" />
+                  <th className="px-2 py-1.5 text-xs font-medium text-slate-500 w-16" />
+                  <th className="px-2 py-1.5 text-xs font-medium text-slate-500 w-16" />
+                  <th className="px-2 py-1.5 text-xs font-medium text-slate-500 w-32" />
                   <th className="px-2 py-1.5 text-xs font-medium text-slate-500 w-16" />
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {Array.from({ length: 8 }).map((_, i) => (
+                {Array.from({ length: 5 }).map((_, i) => (
                   <tr key={i}>
-                    <td className="px-2 py-1.5">
-                      <Skeleton className="h-4 w-28" />
-                    </td>
-                    <td className="px-2 py-1.5">
-                      <Skeleton className="h-4 w-12" />
-                    </td>
-                    <td className="px-2 py-1.5">
-                      <Skeleton className="h-4 w-10" />
-                    </td>
-                    <td className="px-2 py-1.5">
-                      <Skeleton className="h-4 w-16" />
-                    </td>
-                    <td className="px-2 py-1.5">
-                      <Skeleton className="h-4 w-12" />
-                    </td>
-                    <td className="px-2 py-1.5">
-                      <Skeleton className="h-4 w-12" />
-                    </td>
-                    <td className="px-2 py-1.5">
-                      <Skeleton className="h-4 w-10" />
-                    </td>
+                    <td className="px-1 py-1"><Skeleton className="h-4 w-24" /></td>
+                    <td className="px-1 py-1"><Skeleton className="h-4 w-10" /></td>
+                    <td className="px-1 py-1"><Skeleton className="h-4 w-10" /></td>
+                    <td className="px-1 py-1"><Skeleton className="h-4 w-14" /></td>
+                    <td className="px-1 py-1"><Skeleton className="h-4 w-10" /></td>
+                    <td className="px-1 py-1"><Skeleton className="h-4 w-10" /></td>
+                    <td className="px-1 py-1"><Skeleton className="h-4 w-24" /></td>
+                    <td className="px-1 py-1"><Skeleton className="h-4 w-8" /></td>
                   </tr>
                 ))}
               </tbody>

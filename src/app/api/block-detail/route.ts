@@ -58,7 +58,7 @@ export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
   const code = searchParams.get("code");
   const startDate = searchParams.get("startDate");
-  const days = Number.parseInt(searchParams.get("days") || "10", 10);
+  const days = Number.parseInt(searchParams.get("days") || "3", 10);
 
   if (!code) {
     return NextResponse.json({ error: "Missing block code" }, { status: 400 });
