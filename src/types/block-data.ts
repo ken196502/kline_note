@@ -64,6 +64,7 @@ export interface StockData {
   isNew: number;
   isSt: number;
   marketType: string;
+  timePreview?: number[];
 }
 
 export interface DayBlockData {

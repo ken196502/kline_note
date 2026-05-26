@@ -70,6 +70,78 @@ const SortableHeader = ({
   );
 };
 
+// 分时图组件
+const TimePreviewChart = ({ data }: { data: number[] | undefined }) => {
+  const canvasRef = useCallback((canvas: HTMLCanvasElement | null) => {
+    if (!canvas || !data || data.length === 0) return;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const width = 120;
+    const height = 40;
+    canvas.width = width * 2;
+    canvas.height = height * 2;
+    ctx.scale(2, 2);
+
+    // 清空
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, width, height);
+
+    // 计算坐标点
+    const minVal = Math.min(...data);
+    const maxVal = Math.max(...data);
+    const range = maxVal - minVal || 1;
+
+    const points = data.map((val, i) => ({
+      x: (i / (data.length - 1)) * (width - 2),
+      y: height - 2 - ((val - minVal) / range) * (height - 4)
+    }));
+
+    // 绘制填充区域
+    ctx.beginPath();
+    ctx.moveTo(1, height - 2);
+    points.forEach(p => ctx.lineTo(p.x + 1, p.y));
+    ctx.lineTo(width - 1, height - 2);
+    ctx.closePath();
+    ctx.fillStyle = 'rgba(251, 146, 60, 0.15)';
+    ctx.fill();
+
+    // 绘制线
+    ctx.beginPath();
+    points.forEach((p, i) => {
+      if (i === 0) ctx.moveTo(p.x + 1, p.y);
+      else ctx.lineTo(p.x + 1, p.y);
+    });
+    ctx.strokeStyle = '#f97316';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    // 绘制起点和终点
+    if (points.length > 0) {
+      ctx.beginPath();
+      ctx.arc(points[0].x + 1, points[0].y, 2, 0, Math.PI * 2);
+      ctx.fillStyle = '#f97316';
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.arc(points[points.length - 1].x + 1, points[points.length - 1].y, 2, 0, Math.PI * 2);
+      ctx.fillStyle = '#dc2626';
+      ctx.fill();
+    }
+  }, [data]);
+
+  if (!data || data.length === 0) {
+    return (
+      <div className="w-30 h-10 flex items-center justify-center text-[10px] text-slate-300">
+        --
+      </div>
+    );
+  }
+
+  return <canvas ref={canvasRef} className="w-30 h-10" />;
+};
+
 export default function BlockDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -393,6 +465,9 @@ export default function BlockDetailPage() {
                           onSort={handleSort}
                           className="w-16"
                         />
+                        <th className="px-1 py-1 text-xs font-medium text-slate-500 text-left w-32">
+                          分时缩略图
+                        </th>
                         <th className="px-1 py-1 text-xs font-medium text-slate-500 text-left">
                           备注
                         </th>
@@ -460,6 +535,9 @@ export default function BlockDetailPage() {
                               <span className="font-mono text-xs text-slate-500">
                                 {stock.lastLimitUpTime}
                               </span>
+                            </td>
+                            <td className="px-1 py-1">
+                              <TimePreviewChart data={stock.timePreview} />
                             </td>
                             <td className="px-1 py-1">
                               <button

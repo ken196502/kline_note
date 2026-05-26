@@ -2,11 +2,57 @@ import { NextRequest, NextResponse } from "next/server";
 import type { BlockData, StockData } from "@/types/block-data";
 import {
   fetchFromApi,
+  fetchLimitUpPoolFromApi,
   transformBlockData,
   transformStockData,
 } from "@/lib/block-api";
 import { getPrevTradingDay, isHoliday } from "@/lib/trading-day";
 import { getSupabaseClient } from "@/storage/database/supabase-client";
+
+// 异步更新分时图数据（带延迟防封）
+async function asyncUpdateTimePreview(stocks: StockData[], date: string) {
+  // 只处理没有timePreview的股票
+  const stocksWithoutPreview = stocks.filter(s => !s.timePreview);
+  if (stocksWithoutPreview.length === 0) return;
+
+  // 异步执行，不阻塞响应
+  (async () => {
+    try {
+      // 获取该日期涨停池数据（含分时图）
+      const poolData = await fetchLimitUpPoolFromApi(date);
+      
+      if (poolData.status_code === 0 && poolData.data?.info) {
+        const client = getSupabaseClient();
+        
+        // 创建股票代码到分时数据的映射
+        const timePreviewMap = new Map<string, number[]>();
+        for (const stockInfo of poolData.data.info) {
+          if (stockInfo.time_preview && stockInfo.time_preview.length > 0) {
+            timePreviewMap.set(stockInfo.code, stockInfo.time_preview);
+          }
+        }
+
+        // 批量更新数据库
+        for (const stock of stocksWithoutPreview) {
+          const timePreview = timePreviewMap.get(stock.code);
+          if (timePreview) {
+            await client.from("stock_limit_up")
+              .update({ time_preview: timePreview })
+              .eq("date", stock.date)
+              .eq("block_code", stock.blockCode)
+              .eq("stock_code", stock.code);
+            
+            // 延迟防封，每次更新后等待1-2秒
+            const delay = 1000 + Math.random() * 1000;
+            await new Promise(resolve => setTimeout(resolve, delay));
+          }
+        }
+      }
+    } catch (error) {
+      console.error("异步更新分时图失败:", error);
+    }
+  })();
+}
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
@@ -81,6 +127,7 @@ export async function GET(request: NextRequest) {
           isNew: (s.is_new as number) || 0,
           isSt: (s.is_st as number) || 0,
           marketType: (s.market_type as string) || "",
+          timePreview: s.time_preview as number[] | undefined,
         }));
 
         result.push({ date: currentDate, block: blockData, stocks });
@@ -135,6 +182,7 @@ export async function GET(request: NextRequest) {
                 first_limit_up_time: stockData.firstLimitUpTime,
                 last_limit_up_time: stockData.lastLimitUpTime,
                 reason_type: stockData.reasonType,
+                time_preview: stockData.timePreview,
               }, {
                 onConflict: 'date,block_code,stock_code'
               });
@@ -155,6 +203,11 @@ export async function GET(request: NextRequest) {
 
   const hasMore = totalScanned >= maxScan;
   const nextDate = result.length > 0 ? getPrevTradingDay(result[result.length - 1].date) : null;
+
+  // 异步更新分时图（不阻塞响应）
+  for (const dayResult of result) {
+    await asyncUpdateTimePreview(dayResult.stocks, dayResult.date);
+  }
 
   return NextResponse.json({
     data: result,

@@ -58,6 +58,18 @@ export const stockLimitUp = pgTable("stock_limit_up", {
 	index("stock_limit_up_date_idx").using("btree", table.date.asc().nullsLast().op("text_ops")),
 ]);
 
+export const stockTimePreview = pgTable("stock_time_preview", {
+	id: serial().primaryKey().notNull(),
+	date: varchar({ length: 16 }).notNull(),
+	stockCode: varchar("stock_code", { length: 32 }).notNull(),
+	// 分时涨跌幅百分比，约80个数据点的JSON数组
+	timePreview: text("time_preview").notNull(),
+	fetchedAt: timestamp("fetched_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+	uniqueIndex("stock_time_preview_unique_idx").using("btree", table.date.asc().nullsLast().op("text_ops"), table.stockCode.asc().nullsLast().op("text_ops")),
+	index("stock_time_preview_date_idx").using("btree", table.date.asc().nullsLast().op("text_ops")),
+]);
+
 export const healthCheck = pgTable("health_check", {
 	id: serial().notNull(),
 	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
