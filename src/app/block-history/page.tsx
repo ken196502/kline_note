@@ -89,7 +89,7 @@ export default function BlockHistoryPage() {
                 {dayData.blocks.map((block) => (
                   <Link
                     key={`${dayData.date}-${block.code}`}
-                    href={`/block-history/${dayData.date}/${block.code}`}
+                    href={`/block-history/${block.code}`}
                   >
                     <Card className="overflow-hidden border-0 shadow-lg shadow-slate-900/5 bg-white/80 backdrop-blur-sm hover:shadow-xl hover:shadow-orange-500/10 transition-all duration-300 cursor-pointer group h-full">
                       <div className="px-5 py-4">
