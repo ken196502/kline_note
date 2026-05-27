@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { Inspector } from 'react-dev-inspector';
+import { AppShell } from '@/components/app-shell';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -43,7 +44,7 @@ export default function RootLayout({
     <html lang="en">
       <body className={`antialiased`}>
         {isDev && <Inspector />}
-        {children}
+        <AppShell>{children}</AppShell>
       </body>
     </html>
   );

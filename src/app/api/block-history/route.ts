@@ -128,8 +128,20 @@ export async function GET(request: NextRequest) {
                 first_limit_up_time: stockData.firstLimitUpTime,
                 last_limit_up_time: stockData.lastLimitUpTime,
                 reason_type: stockData.reasonType,
+                market_type: stockData.marketType,
               }, {
                 onConflict: 'date,block_code,stock_code'
+              });
+
+              // 同步写入 stock_daily_price 表
+              await client.from("stock_daily_price").upsert({
+                date: stockData.date,
+                stock_code: stockData.code,
+                stock_name: stockData.name,
+                price: stockData.latest,
+                change_rate: stockData.changeRate,
+              }, {
+                onConflict: 'date,stock_code'
               });
             }
           }

@@ -2,6 +2,129 @@ import type { ApiBlock, ApiResponse, ApiStock } from "@/types/block-data";
 import { formatTime } from "./trading-day";
 import { getSupabaseClient } from "@/storage/database/supabase-client";
 
+// 腾讯实时行情返回的单条数据结构
+interface TencentQuoteItem {
+  code: string;       // 股票代码（腾讯格式 sh600519）
+  name: string;       // 股票名称
+  price: number;      // 当前价格
+  changeRate: number;  // 涨跌幅百分比
+}
+
+/**
+ * 将股票代码转换为腾讯格式
+ * 上证: sh600519, 深证: sz000001
+ */
+function convertToTencentCode(code: string, marketType?: string): string {
+  if (marketType === "SH" || code.startsWith("6")) {
+    return `sh${code}`;
+  }
+  return `sz${code}`;
+}
+
+/**
+ * 从腾讯实时行情接口批量获取股票价格和涨跌幅
+ * 接口: https://qt.gtimg.cn/q=sh600519,sz000001
+ * 返回格式: 每行一个 v_sh600519="1~贵州茅台~600519~...~当前价~...~涨跌幅~..."
+ * 字段说明（以~分隔）: 第1位市场标识, 第2位名称, 第3位代码, 第4位当前价, 第5位昨收, ...
+ * 涨跌幅在第33位（索引32）
+ */
+export async function fetchTencentQuotes(
+  stockCodes: string[],
+  marketTypeMap?: Map<string, string>
+): Promise<Map<string, TencentQuoteItem>> {
+  const result = new Map<string, TencentQuoteItem>();
+
+  if (stockCodes.length === 0) return result;
+
+  // 转换为腾讯格式的代码
+  const tencentCodes = stockCodes.map((code) =>
+    convertToTencentCode(code, marketTypeMap?.get(code))
+  );
+
+  // 腾讯接口支持批量查询，用逗号分隔
+  const url = `https://qt.gtimg.cn/q=${tencentCodes.join(",")}`;
+
+  const response = await fetch(url, {
+    headers: {
+      Referer: "https://gu.qq.com/",
+      "User-Agent": "Mozilla/5.0 Chrome/124.0.0.0 Safari/537.36",
+    },
+  });
+
+  if (!response.ok) {
+    console.error("腾讯行情接口请求失败:", response.status);
+    return result;
+  }
+
+  const text = await response.text();
+  const lines = text.split(";").filter((line) => line.trim().length > 0);
+
+  for (const line of lines) {
+    const eqIndex = line.indexOf("=");
+    if (eqIndex === -1) continue;
+
+    const content = line.substring(eqIndex + 1).replace(/^"|"$/g, "");
+    if (!content) continue;
+
+    const fields = content.split("~");
+    if (fields.length < 33) continue;
+
+    const rawCode = fields[2] || "";   // 纯数字代码
+    const name = fields[1] || "";
+    const price = parseFloat(fields[3]);
+    const changeRate = parseFloat(fields[32]);
+
+    if (!rawCode || Number.isNaN(price)) continue;
+
+    result.set(rawCode, {
+      code: rawCode,
+      name,
+      price,
+      changeRate: Number.isNaN(changeRate) ? 0 : changeRate,
+    });
+  }
+
+  return result;
+}
+
+/**
+ * 批量从腾讯实时行情获取数据，并 upsert 到 stock_daily_price 表
+ * 返回成功获取的股票代码集合
+ */
+export async function fetchAndUpsertDailyPrices(
+  date: string,
+  stockCodes: string[],
+  marketTypeMap?: Map<string, string>
+): Promise<Map<string, { price: number; changeRate: number }>> {
+  const result = new Map<string, { price: number; changeRate: number }>();
+
+  if (stockCodes.length === 0) return result;
+
+  const quotes = await fetchTencentQuotes(stockCodes, marketTypeMap);
+
+  if (quotes.size === 0) return result;
+
+  const client = getSupabaseClient();
+
+  for (const [code, quote] of quotes) {
+    // upsert 到 stock_daily_price
+    await client.from("stock_daily_price").upsert(
+      {
+        date,
+        stock_code: code,
+        stock_name: quote.name,
+        price: quote.price,
+        change_rate: quote.changeRate,
+      },
+      { onConflict: "date,stock_code" }
+    );
+
+    result.set(code, { price: quote.price, changeRate: quote.changeRate });
+  }
+
+  return result;
+}
+
 // 从同花顺API获取涨停池数据（含分时缩略图）
 export async function fetchLimitUpPoolFromApi(date: string) {
   const apiDate = date.replace(/-/g, "");

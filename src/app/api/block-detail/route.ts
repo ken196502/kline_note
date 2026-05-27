@@ -163,6 +163,7 @@ export async function GET(request: NextRequest) {
                 first_limit_up_time: stockData.firstLimitUpTime,
                 last_limit_up_time: stockData.lastLimitUpTime,
                 reason_type: stockData.reasonType,
+                market_type: stockData.marketType,
                 time_preview: stockData.timePreview ? JSON.stringify(stockData.timePreview) : null,
               }, { onConflict: 'date,block_code,stock_code' });
             }

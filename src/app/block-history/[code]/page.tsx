@@ -26,18 +26,12 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
-import {
-  Drawer,
-  DrawerContent,
-  DrawerHeader,
-  DrawerTitle,
-} from "@/components/ui/drawer";
-import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/hooks/use-auth";
 import { useNotes } from "@/hooks/use-notes";
 import { useBlockDetail } from "@/hooks/use-block-detail";
 import { type BlockData, type StockData } from "@/types/block-data";
-import { KLineChart } from "@/components/kline-chart";
+import { TimePreviewChart } from "@/components/time-preview-chart";
+import { StockDetailPanel, type StockDetailInfo } from "@/components/stock-detail-panel";
 
 type SortField =
   | "name"
@@ -88,171 +82,6 @@ const SortableHeader = ({
   );
 };
 
-// 分时图组件
-const TimePreviewChart = ({ data }: { data: number[] | undefined }) => {
-  const canvasRef = useCallback(
-    (canvas: HTMLCanvasElement | null) => {
-      if (!canvas || !data || data.length === 0) return;
-
-      const ctx = canvas.getContext("2d");
-      if (!ctx) return;
-
-      const width = 120;
-      const height = 40;
-      canvas.width = width * 2;
-      canvas.height = height * 2;
-      ctx.scale(2, 2);
-
-      // 清空
-      ctx.fillStyle = "#ffffff";
-      ctx.fillRect(0, 0, width, height);
-
-      // 计算坐标点
-      const minVal = Math.min(...data);
-      const maxVal = Math.max(...data);
-      const range = maxVal - minVal || 1;
-
-      const points = data.map((val, i) => ({
-        x: (i / (data.length - 1)) * (width - 2),
-        y: height - 2 - ((val - minVal) / range) * (height - 4),
-      }));
-
-      // 绘制填充区域
-      ctx.beginPath();
-      ctx.moveTo(1, height - 2);
-      points.forEach((p) => ctx.lineTo(p.x + 1, p.y));
-      ctx.lineTo(width - 1, height - 2);
-      ctx.closePath();
-      ctx.fillStyle = "rgba(251, 146, 60, 0.15)";
-      ctx.fill();
-
-      // 绘制线
-      ctx.beginPath();
-      points.forEach((p, i) => {
-        if (i === 0) ctx.moveTo(p.x + 1, p.y);
-        else ctx.lineTo(p.x + 1, p.y);
-      });
-      ctx.strokeStyle = "#f97316";
-      ctx.lineWidth = 1.5;
-      ctx.stroke();
-
-      // 绘制起点和终点
-      if (points.length > 0) {
-        ctx.beginPath();
-        ctx.arc(points[0].x + 1, points[0].y, 2, 0, Math.PI * 2);
-        ctx.fillStyle = "#f97316";
-        ctx.fill();
-
-        ctx.beginPath();
-        ctx.arc(
-          points[points.length - 1].x + 1,
-          points[points.length - 1].y,
-          2,
-          0,
-          Math.PI * 2
-        );
-        ctx.fillStyle = "#dc2626";
-        ctx.fill();
-      }
-    },
-    [data]
-  );
-
-  if (!data || data.length === 0) {
-    return (
-      <div className="w-30 h-10 flex items-center justify-center text-[10px] text-slate-300">
-        --
-      </div>
-    );
-  }
-
-  return <canvas ref={canvasRef} className="w-30 h-10" />;
-};
-
-// 放大版分时图组件
-const TimePreviewChartLarge = ({ data }: { data: number[] | undefined }) => {
-  const canvasRef = useCallback(
-    (canvas: HTMLCanvasElement | null) => {
-      if (!canvas || !data || data.length === 0) return;
-
-      const ctx = canvas.getContext("2d");
-      if (!ctx) return;
-
-      const width = canvas.clientWidth;
-      const height = canvas.clientHeight;
-      canvas.width = width * 2;
-      canvas.height = height * 2;
-      ctx.scale(2, 2);
-
-      ctx.fillStyle = "#ffffff";
-      ctx.fillRect(0, 0, width, height);
-
-      const minVal = Math.min(...data);
-      const maxVal = Math.max(...data);
-      const range = maxVal - minVal || 1;
-
-      const points = data.map((val, i) => ({
-        x: (i / (data.length - 1)) * (width - 8) + 4,
-        y: height - 4 - ((val - minVal) / range) * (height - 8),
-      }));
-
-      // 填充
-      ctx.beginPath();
-      ctx.moveTo(4, height - 4);
-      points.forEach((p) => ctx.lineTo(p.x, p.y));
-      ctx.lineTo(width - 4, height - 4);
-      ctx.closePath();
-      ctx.fillStyle = "rgba(251, 146, 60, 0.12)";
-      ctx.fill();
-
-      // 线
-      ctx.beginPath();
-      points.forEach((p, i) => {
-        if (i === 0) ctx.moveTo(p.x, p.y);
-        else ctx.lineTo(p.x, p.y);
-      });
-      ctx.strokeStyle = "#f97316";
-      ctx.lineWidth = 2;
-      ctx.stroke();
-
-      // 起终点
-      if (points.length > 0) {
-        ctx.beginPath();
-        ctx.arc(points[0].x, points[0].y, 3, 0, Math.PI * 2);
-        ctx.fillStyle = "#f97316";
-        ctx.fill();
-
-        ctx.beginPath();
-        ctx.arc(
-          points[points.length - 1].x,
-          points[points.length - 1].y,
-          3,
-          0,
-          Math.PI * 2
-        );
-        ctx.fillStyle = "#dc2626";
-        ctx.fill();
-      }
-    },
-    [data]
-  );
-
-  if (!data || data.length === 0) {
-    return (
-      <div className="flex items-center justify-center text-sm text-slate-300">
-        暂无分时数据
-      </div>
-    );
-  }
-
-  return (
-    <canvas
-      ref={canvasRef}
-      className="w-full h-full"
-    />
-  );
-};
-
 export default function BlockDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -261,18 +90,17 @@ export default function BlockDetailPage() {
   const { authenticated, username, loading: authLoading, logout } = useAuth();
   const { data, loading, error, hasMore, loadMore, allBlocks } =
     useBlockDetail(code);
-  const { notes, saveNote, getNote, preloadNotes } =
+  const { saveNote, getNote, preloadNotes } =
     useNotes();
 
   // 当前选中的股票（用于右侧面板）
-  const [selectedStock, setSelectedStock] = useState<{
-    code: string;
-    name: string;
-    marketType: string;
-    timePreview: number[] | undefined;
-    date: string;
-    blockName: string;
-  } | null>(null);
+  const [selectedStock, setSelectedStock] = useState<StockDetailInfo | null>(null);
+
+  // 股票详情抽屉状态（lg以下使用）
+  const [stockDetailOpen, setStockDetailOpen] = useState(false);
+
+  // 外部触发打开备注的计数器
+  const [openNoteRequest, setOpenNoteRequest] = useState(0);
 
   // 按拼音首字母分组的板块列表（类似通讯录）
   const groupedBlocks = useMemo(() => {
@@ -323,19 +151,6 @@ export default function BlockDetailPage() {
   // 板块切换drawer状态
   const [blockPickerOpen, setBlockPickerOpen] = useState(false);
 
-  // 股票详情抽屉状态（lg以下使用）
-  const [stockDetailOpen, setStockDetailOpen] = useState(false);
-
-  // 备注drawer状态
-  const [noteDrawerOpen, setNoteDrawerOpen] = useState(false);
-  const [currentNoteStock, setCurrentNoteStock] = useState<{
-    stock: StockData;
-    date: string;
-    blockName: string;
-  } | null>(null);
-  const [noteContent, setNoteContent] = useState("");
-  const [savingNote, setSavingNote] = useState(false);
-
   // 排序状态
   const [sortField, setSortField] = useState<SortField>("changeRate");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
@@ -368,7 +183,6 @@ export default function BlockDetailPage() {
         code: firstStock.code,
         name: firstStock.name,
         marketType: firstStock.marketType,
-        timePreview: firstStock.timePreview,
         date: data[0].date,
         blockName: data[0].block.name,
       });
@@ -442,27 +256,6 @@ export default function BlockDetailPage() {
     }
   };
 
-  const openNoteDrawer = (stock: StockData, date: string, blockName: string) => {
-    const existingNote = getNote(stock.code, date);
-    setCurrentNoteStock({ stock, date, blockName });
-    setNoteContent(existingNote || "");
-    setNoteDrawerOpen(true);
-  };
-
-  const handleSaveNote = async () => {
-    if (!currentNoteStock || !username) return;
-    setSavingNote(true);
-    try {
-      await saveNote(currentNoteStock.stock.code, currentNoteStock.date, noteContent);
-      setNoteDrawerOpen(false);
-      setCurrentNoteStock(null);
-    } catch (err) {
-      console.error("保存备注失败", err);
-    } finally {
-      setSavingNote(false);
-    }
-  };
-
   const handleBlockSelect = (selectedCode: string) => {
     setBlockPickerOpen(false);
     router.push(`/block-history/${selectedCode}`);
@@ -475,17 +268,6 @@ export default function BlockDetailPage() {
     const block = allBlocks.find((b) => b.code === code);
     return block ? block.name : code;
   }, [data, allBlocks, code]);
-
-  // 获取当前选中股票的 symbol（用于K线API）
-  const selectedSymbol = useMemo(() => {
-    if (!selectedStock) return "";
-    const marketPrefix =
-      selectedStock.marketType === "SH" ||
-      selectedStock.code.startsWith("6")
-        ? "sh"
-        : "sz";
-    return `${marketPrefix}${selectedStock.code}`;
-  }, [selectedStock]);
 
   // 初始加载中（没有数据时的loading）
   const isInitialLoading = loading && data.length === 0;
@@ -686,7 +468,6 @@ export default function BlockDetailPage() {
                                   code: stock.code,
                                   name: stock.name,
                                   marketType: stock.marketType,
-                                  timePreview: stock.timePreview,
                                   date: dayData.date,
                                   blockName: dayData.block.name,
                                 });
@@ -766,11 +547,14 @@ export default function BlockDetailPage() {
                                 <button
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    openNoteDrawer(
-                                      stock,
-                                      dayData.date,
-                                      dayData.block.name
-                                    );
+                                    setSelectedStock({
+                                      code: stock.code,
+                                      name: stock.name,
+                                      marketType: stock.marketType,
+                                      date: dayData.date,
+                                      blockName: dayData.block.name,
+                                    });
+                                    setOpenNoteRequest((n) => n + 1);
                                   }}
                                   className="inline-flex items-center justify-center h-5 px-1 rounded hover:bg-slate-100 text-slate-400 hover:text-slate-700 transition-colors"
                                 >
@@ -867,163 +651,19 @@ export default function BlockDetailPage() {
           </div>
         </div>
 
-        {/* 右侧 - 分时图 + 备注 + K线 (lg以上才显示) */}
-        <div className="hidden lg:flex flex-1 min-w-[50%] bg-white flex-col overflow-hidden">
-          {selectedStock ? (
-            <>
-              {/* 上 - 分时缩略图（放大展示） */}
-              <div className="h-32 shrink-0 flex items-center justify-center p-2 border-b border-slate-200 overflow-hidden">
-                {selectedStock.timePreview && selectedStock.timePreview.length > 0 ? (
-                  <TimePreviewChartLarge data={selectedStock.timePreview} />
-                ) : (
-                  <span className="text-sm text-slate-400">暂无分时数据</span>
-                )}
-              </div>
-
-              {/* 中 - 备注（分隔带，点击编辑） */}
-              <div
-                className="h-28 shrink-0 border-b border-slate-200 px-3 py-2 cursor-pointer hover:bg-slate-50/50 transition-colors flex flex-col overflow-hidden"
-                onClick={() => {
-                  if (selectedStock) {
-                    openNoteDrawer(
-                      { code: selectedStock.code, name: selectedStock.name, marketType: selectedStock.marketType, timePreview: selectedStock.timePreview } as StockData,
-                      selectedStock.date,
-                      selectedStock.blockName
-                    );
-                  }
-                }}
-              >
-                <div className="flex items-center gap-2 mb-1">
-                  <StickyNote className="w-3 h-3 text-slate-400" />
-                  <span className="text-xs font-semibold text-slate-700">
-                    {selectedStock.name}
-                  </span>
-                  <span className="text-[10px] text-slate-400 font-mono">
-                    {selectedStock.code}
-                  </span>
-                  <span className="text-[10px] text-slate-400 ml-auto">点击编辑</span>
-                </div>
-                <div className="flex-1 text-sm text-slate-600 overflow-hidden">
-                  {getNote(selectedStock.code, selectedStock.date) || (
-                    <span className="text-slate-400">暂无备注</span>
-                  )}
-                </div>
-              </div>
-
-              {/* 下 - K线图（置底，不被压缩） */}
-              <div className="flex-1 min-h-0 overflow-hidden">
-                <KLineChart
-                  symbol={selectedSymbol}
-                  stockName={selectedStock.name}
-                />
-              </div>
-            </>
-          ) : (
-            <div className="flex items-center justify-center h-full text-sm text-slate-400">
-              点击左侧个股查看详情
-            </div>
-          )}
-        </div>
+        <StockDetailPanel
+          selectedStock={selectedStock}
+          getNote={getNote}
+          saveNote={saveNote}
+          formatDate={formatDate}
+          username={username}
+          noteHeightClass="h-42"
+          emptyText="点击左侧个股查看详情"
+          stockDetailOpen={stockDetailOpen}
+          setStockDetailOpen={setStockDetailOpen}
+          openNoteRequest={openNoteRequest}
+        />
       </main>
-
-      {/* 股票详情抽屉 (lg以下) */}
-      <Sheet open={stockDetailOpen} onOpenChange={setStockDetailOpen}>
-        <SheetContent side="right" className="w-full sm:max-w-md p-0 flex flex-col">
-          {selectedStock ? (
-            <>
-              <SheetHeader className="px-4 pt-4 pb-2 border-b border-slate-200">
-                <SheetTitle className="flex items-center gap-2">
-                  <span>{selectedStock.name}</span>
-                  <span className="text-xs text-slate-400 font-mono">{selectedStock.code}</span>
-                </SheetTitle>
-              </SheetHeader>
-
-              {/* 上 - 分时缩略图（放大展示） */}
-              <div className="h-32 shrink-0 flex items-center justify-center p-2 border-b border-slate-200 overflow-hidden">
-                {selectedStock.timePreview && selectedStock.timePreview.length > 0 ? (
-                  <TimePreviewChartLarge data={selectedStock.timePreview} />
-                ) : (
-                  <span className="text-sm text-slate-400">暂无分时数据</span>
-                )}
-              </div>
-
-              {/* 中 - 备注（点击编辑） */}
-              <div
-                className="h-24 shrink-0 border-b border-slate-200 px-3 py-2 cursor-pointer hover:bg-slate-50/50 transition-colors flex flex-col overflow-hidden"
-                onClick={() => {
-                  if (selectedStock) {
-                    openNoteDrawer(
-                      { code: selectedStock.code, name: selectedStock.name, marketType: selectedStock.marketType, timePreview: selectedStock.timePreview } as StockData,
-                      selectedStock.date,
-                      selectedStock.blockName
-                    );
-                  }
-                }}
-              >
-                <div className="flex items-center gap-2 mb-1">
-                  <StickyNote className="w-3 h-3 text-slate-400" />
-                  <span className="text-xs font-semibold text-slate-700">备注</span>
-                  <span className="text-[10px] text-slate-400 ml-auto">点击编辑</span>
-                </div>
-                <div className="flex-1 text-sm text-slate-600 overflow-hidden">
-                  {getNote(selectedStock.code, selectedStock.date) || (
-                    <span className="text-slate-400">暂无备注</span>
-                  )}
-                </div>
-              </div>
-
-              {/* 下 - K线图（置底，不被压缩） */}
-              <div className="flex-1 min-h-0 overflow-hidden">
-                <KLineChart
-                  symbol={selectedSymbol}
-                  stockName={selectedStock.name}
-                />
-              </div>
-            </>
-          ) : (
-            <div className="flex items-center justify-center h-full text-sm text-slate-400">
-              点击左侧个股查看详情
-            </div>
-          )}
-        </SheetContent>
-      </Sheet>
-
-      {/* Note Drawer */}
-      <Drawer open={noteDrawerOpen} onOpenChange={setNoteDrawerOpen}>
-        <DrawerContent>
-          <DrawerHeader className="px-4 pt-4">
-            {currentNoteStock && (
-              <DrawerTitle>
-                {currentNoteStock.blockName} -{" "}
-                {currentNoteStock.stock.name} ({currentNoteStock.stock.code})
-              </DrawerTitle>
-            )}
-            <div className="text-xs text-slate-500 mt-1">
-              {currentNoteStock && formatDate(currentNoteStock.date)}
-            </div>
-          </DrawerHeader>
-          <div className="px-4 py-4">
-            <Textarea
-              value={noteContent}
-              onChange={(e) => setNoteContent(e.target.value)}
-              placeholder="输入备注内容..."
-              className="min-h-[150px] resize-none"
-            />
-            <div className="flex justify-end gap-2 mt-4">
-              <Button
-                variant="ghost"
-                onClick={() => setNoteDrawerOpen(false)}
-                disabled={savingNote}
-              >
-                取消
-              </Button>
-              <Button onClick={handleSaveNote} disabled={savingNote}>
-                {savingNote ? "保存中..." : "保存"}
-              </Button>
-            </div>
-          </div>
-        </DrawerContent>
-      </Drawer>
     </div>
   );
 }

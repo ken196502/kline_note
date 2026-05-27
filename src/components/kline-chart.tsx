@@ -50,8 +50,20 @@ export function KLineChart({ symbol, stockName }: KLineChartProps) {
 
     setLoading(true);
 
-    // 创建图表
-    const chart = init(containerId);
+    // 创建图表，layout 中声明成交量副图面板
+    const chart = init(containerId, {
+      layout: {
+        panes: [
+          { type: "candle" },
+          {
+            type: "indicator",
+            content: ["VOL"],
+            options: { minHeight: 60 },
+          },
+          { type: "xAxis" },
+        ],
+      },
+    });
     if (!chart) {
       setLoading(false);
       return;
@@ -60,6 +72,15 @@ export function KLineChart({ symbol, stockName }: KLineChartProps) {
     chartRef.current = chart;
     chart.setSymbol({ ticker: stockName || currentSymbol });
     chart.setPeriod({ span: 1, type: "day" });
+    chart.setStyles({
+      candle: {
+        tooltip: {
+          title: {
+            show: false,
+          },
+        },
+      },
+    });
 
     // 设置数据加载器
     chart.setDataLoader({
@@ -133,15 +154,6 @@ export function KLineChart({ symbol, stockName }: KLineChartProps) {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center gap-2 mb-2 px-2">
-        <span className="text-sm font-semibold text-slate-900">
-          {stockName}
-        </span>
-        <span className="text-xs text-slate-400 font-mono">{symbol}</span>
-        {loading && (
-          <span className="text-xs text-slate-400">加载K线数据...</span>
-        )}
-      </div>
       <div className="flex-1 relative min-h-0">
         {loading && (
           <div className="absolute inset-0 z-10 flex items-center justify-center bg-white">

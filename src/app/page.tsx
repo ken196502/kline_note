@@ -38,7 +38,7 @@ export default function LoginPage() {
         return;
       }
 
-      window.location.href = "/block-history";
+      window.location.href = "/my";
     } catch {
       setError("网络错误，请重试");
     } finally {
