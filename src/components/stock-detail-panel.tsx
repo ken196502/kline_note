@@ -54,6 +54,9 @@ interface StockDetailPanelProps {
 
   /** 外部请求打开备注编辑的触发器，每次递增即触发一次 */
   openNoteRequest?: number;
+
+  /** K线数据加载完成后的回调 */
+  onKLineLoaded?: (symbol: string) => void;
 }
 
 export function StockDetailPanel({
@@ -67,6 +70,7 @@ export function StockDetailPanel({
   stockDetailOpen,
   setStockDetailOpen,
   openNoteRequest = 0,
+  onKLineLoaded,
 }: StockDetailPanelProps) {
   // 在线分时数据状态
   const [onlineTimePreview, setOnlineTimePreview] = useState<number[]>([]);
@@ -177,7 +181,7 @@ export function StockDetailPanel({
       <div className="flex flex-col overflow-hidden flex-1 min-h-0">
         {/* K线图（上）填满剩余空间 */}
         <div className={cn("overflow-hidden border-b border-slate-200", isSheet ? "h-[45%] shrink-0" : "flex-1 shrink-0")}>
-          <KLineChart symbol={selectedSymbol} stockName={selectedStock.name} />
+          <KLineChart symbol={selectedSymbol} stockName={selectedStock.name} onDataLoaded={onKLineLoaded} />
         </div>
 
         {/* 备注（中）固定高度 */}

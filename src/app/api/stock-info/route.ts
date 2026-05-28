@@ -25,7 +25,10 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "查询失败" }, { status: 500 });
   }
 
-  const text = await response.text();
+  // 腾讯接口返回 GBK 编码，需要用 GBK 解码
+  const buffer = await response.arrayBuffer();
+  const decoder = new TextDecoder("gbk");
+  const text = decoder.decode(buffer);
   const eqIndex = text.indexOf("=");
   if (eqIndex === -1) {
     return NextResponse.json({ error: "未找到数据" }, { status: 404 });

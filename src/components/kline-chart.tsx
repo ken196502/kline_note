@@ -16,9 +16,10 @@ interface KLineChartData {
 interface KLineChartProps {
   symbol: string;
   stockName: string;
+  onDataLoaded?: (symbol: string) => void;
 }
 
-export function KLineChart({ symbol, stockName }: KLineChartProps) {
+export function KLineChart({ symbol, stockName, onDataLoaded }: KLineChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<ReturnType<typeof init> | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -121,6 +122,9 @@ export function KLineChart({ symbol, stockName }: KLineChartProps) {
 
           callback(chartData);
           setLoading(false);
+
+          // 通知父组件K线数据已加载
+          onDataLoaded?.(currentSymbol);
 
           // 数据加载完成后，容器从 hidden 变为可见，需要触发 resize
           // 让 klinecharts 重新计算正确的尺寸
