@@ -1,26 +1,29 @@
 "use client";
 
-import { useState, useMemo, useCallback, useEffect, useRef } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import {
   Plus,
   X,
   Trash2,
   ArrowLeft,
-  Check,
+  Search,
   Loader2,
   ArrowUpDown,
   ArrowUp,
   ArrowDown,
   Layers,
+  PenLine,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { CustomDate, CustomDateStock } from "@/types/custom-date";
 import { QuickAddBlockStocksDialog } from "@/components/quick-add-block-stocks-dialog";
+import { ManualAddStockDialog } from "@/components/manual-add-stock-dialog";
 
 interface EditDatePanelProps {
   customDate: CustomDate;
+  blockName?: string;
   onAddStock: (stockCode: string, stockName: string) => Promise<boolean>;
   onRemoveStock: (stockCode: string) => Promise<boolean>;
   onDeleteDate: () => void;
@@ -29,45 +32,26 @@ interface EditDatePanelProps {
 
 export function EditDatePanel({
   customDate,
+  blockName,
   onAddStock,
   onRemoveStock,
   onDeleteDate,
   onBack,
 }: EditDatePanelProps) {
-  const [stockCodeInput, setStockCodeInput] = useState("");
-  const [stockNameInput, setStockNameInput] = useState("");
-  const [addingCode, setAddingCode] = useState(false);
   const [removingCode, setRemovingCode] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const [autoNameLoading, setAutoNameLoading] = useState(false);
   const [quickAddOpen, setQuickAddOpen] = useState(false);
+  const [manualAddOpen, setManualAddOpen] = useState(false);
+
+  // 搜索
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<{ code: string; name: string }[]>([]);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // 手动股票列表排序
   const [sortField, setSortField] = useState<"code" | "name">("code");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
-
-  // 记录上次查询过的代码，避免重复查询
-  const lastFetchedCode = useRef<string>("");
-
-  // 输入满6位代码时自动查询名称
-  useEffect(() => {
-    if (stockCodeInput.length === 6 && stockCodeInput !== lastFetchedCode.current) {
-      lastFetchedCode.current = stockCodeInput;
-      setAutoNameLoading(true);
-      fetch(`/api/stock-info?code=${stockCodeInput}`)
-        .then((res) => res.json())
-        .then((data) => {
-          if (data.name) {
-            setStockNameInput(data.name);
-          }
-        })
-        .finally(() => setAutoNameLoading(false));
-    }
-    if (stockCodeInput.length < 6) {
-      lastFetchedCode.current = "";
-      setStockNameInput("");
-    }
-  }, [stockCodeInput]);
 
   // 排序后的股票列表
   const sortedStocks = useMemo(() => {
@@ -99,20 +83,6 @@ export function EditDatePanel({
     );
   };
 
-  const handleAddStock = async () => {
-    if (!stockCodeInput.trim() || stockCodeInput.length !== 6) return;
-    if (customDate.stocks.some((s) => s.stockCode === stockCodeInput)) {
-      setStockCodeInput("");
-      setStockNameInput("");
-      return;
-    }
-    setAddingCode(true);
-    await onAddStock(stockCodeInput, stockNameInput.trim());
-    setStockCodeInput("");
-    setStockNameInput("");
-    setAddingCode(false);
-  };
-
   const handleRemoveStock = async (code: string) => {
     setRemovingCode(code);
     await onRemoveStock(code);
@@ -140,6 +110,33 @@ export function EditDatePanel({
     () => customDate.stocks.map((s) => s.stockCode),
     [customDate.stocks]
   );
+  const existingSet = useMemo(() => new Set(existingStockCodes), [existingStockCodes]);
+
+  // 搜索防抖
+  useEffect(() => {
+    if (!searchQuery.trim()) {
+      setSearchResults([]);
+      return;
+    }
+    if (searchTimer.current) clearTimeout(searchTimer.current);
+    searchTimer.current = setTimeout(() => {
+      setSearchLoading(true);
+      fetch(`/api/stock-search?q=${encodeURIComponent(searchQuery.trim())}`)
+        .then((res) => res.json())
+        .then((data) => {
+          setSearchResults(data.results || []);
+        })
+        .finally(() => setSearchLoading(false));
+    }, 300);
+    return () => {
+      if (searchTimer.current) clearTimeout(searchTimer.current);
+    };
+  }, [searchQuery]);
+
+  const handleSearchAdd = async (code: string, name: string) => {
+    if (existingStockCodes.includes(code)) return;
+    await onAddStock(code, name);
+  };
 
   // 格式化日期标题
   const dateTitle = (() => {
@@ -163,76 +160,98 @@ export function EditDatePanel({
             <ArrowLeft className="w-4 h-4" />
           </Button>
           <h1 className="text-base font-bold text-slate-900 truncate">
-            编辑: {dateTitle}
+            {blockName ? `${blockName} ${dateTitle}` : dateTitle}
           </h1>
         </div>
       </header>
 
       <div className="p-4 space-y-6 max-w-lg mx-auto">
-        {/* 手动添加股票 */}
+        {/* 添加股票 */}
         <section>
           <div className="flex items-center justify-between mb-2">
             <h2 className="text-sm font-semibold text-slate-700 flex items-center gap-1.5">
               <Plus className="w-4 h-4 text-orange-600" />
               添加股票
             </h2>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setQuickAddOpen(true)}
-              className="h-7 text-[11px] text-slate-600"
-            >
-              <Layers className="w-3 h-3 mr-1" />
-              快捷添加板块股票
-            </Button>
-          </div>
-          <p className="text-xs text-slate-400 mb-3">
-            输入6位股票代码和名称，回车添加
-          </p>
-
-          <div className="flex items-center gap-2 mb-3">
-            <Input
-              value={stockCodeInput}
-              onChange={(e) => {
-                const val = e.target.value.replace(/\D/g, "").slice(0, 6);
-                setStockCodeInput(val);
-              }}
-              placeholder="6位代码"
-              className="h-9 text-sm font-mono w-28"
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && stockCodeInput.length === 6 && stockNameInput.trim()) {
-                  handleAddStock();
-                }
-              }}
-            />
-            <div className="relative flex-1">
-              <Input
-                value={stockNameInput}
-                onChange={(e) => setStockNameInput(e.target.value)}
-                placeholder="股票名称"
-                className="h-9 text-sm w-full"
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && stockCodeInput.length === 6 && stockNameInput.trim()) {
-                    handleAddStock();
-                  }
-                }}
-              />
-              {autoNameLoading && (
-                <Loader2 className="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 animate-spin text-slate-400" />
-              )}
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setManualAddOpen(true)}
+                className="h-7 text-[11px] text-slate-600"
+              >
+                <PenLine className="w-3 h-3 mr-1" />
+                手动添加
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setQuickAddOpen(true)}
+                className="h-7 text-[11px] text-slate-600"
+              >
+                <Layers className="w-3 h-3 mr-1" />
+                快捷添加板块股票
+              </Button>
             </div>
-            <Button
-              size="sm"
-              onClick={handleAddStock}
-              disabled={stockCodeInput.length !== 6 || !stockNameInput.trim() || addingCode}
-              className="h-9 px-3"
-            >
-              {addingCode ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <Plus className="w-4 h-4" />
-              )}
-            </Button>
+          </div>
+
+          {/* 搜索添加 */}
+          <div className="mb-3">
+            <div className="relative">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+              <Input
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="输入股票名称或代码搜索添加"
+                className="h-8 pl-8 text-sm"
+              />
+            </div>
+            {searchLoading ? (
+              <div className="flex items-center justify-center py-3">
+                <Loader2 className="w-4 h-4 animate-spin text-slate-400" />
+              </div>
+            ) : searchQuery.trim() && searchResults.length === 0 ? (
+              <div className="text-xs text-slate-400 text-center py-2">
+                未找到匹配的股票
+              </div>
+            ) : searchResults.length > 0 ? (
+              <div className="mt-1 border border-slate-200 rounded divide-y divide-slate-50 max-h-48 overflow-y-auto">
+                {searchResults.map((stock) => {
+                  const isExisting = existingSet.has(stock.code);
+                  return (
+                    <div
+                      key={stock.code}
+                      className={cn(
+                        "flex items-center justify-between px-3 py-1.5",
+                        isExisting ? "opacity-40" : ""
+                      )}
+                    >
+                      <div className="flex items-center gap-3">
+                        <span className="text-xs font-mono text-slate-500 w-14">
+                          {stock.code}
+                        </span>
+                        <span className="text-sm text-slate-900">
+                          {stock.name}
+                        </span>
+                      </div>
+                      {isExisting ? (
+                        <span className="text-[10px] text-slate-400">已添加</span>
+                      ) : (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleSearchAdd(stock.code, stock.name)}
+                          className="h-6 text-[11px] text-orange-600 hover:text-orange-700 hover:bg-orange-50 px-2"
+                        >
+                          <Plus className="w-3 h-3 mr-0.5" />
+                          添加
+                        </Button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            ) : null}
           </div>
 
           {customDate.stocks.length > 0 ? (
@@ -321,6 +340,14 @@ export function EditDatePanel({
         onOpenChange={setQuickAddOpen}
         existingStockCodes={existingStockCodes}
         onAddStocks={handleQuickAddStocks}
+      />
+
+      {/* 手动添加股票弹窗 */}
+      <ManualAddStockDialog
+        open={manualAddOpen}
+        onOpenChange={setManualAddOpen}
+        existingStockCodes={existingStockCodes}
+        onAddStock={onAddStock}
       />
     </div>
   );

@@ -83,10 +83,7 @@ export default function MyPage() {
   // 日期分组折叠状态
   const [collapsedDates, setCollapsedDates] = useState<Set<string>>(new Set());
 
-  // 只看涨停
-  const [showOnlyLimitUp, setShowOnlyLimitUp] = useState(false);
-
-  // 拖动排序相关状态
+相关状态
   const [draggingStock, setDraggingStock] = useState<string | null>(null); // 正在拖动的 stockCode
   const [dragOverStock, setDragOverStock] = useState<string | null>(null); // 拖动经过的目标 stockCode
   const [dragDateId, setDragDateId] = useState<number | null>(null); // 当前拖动所在的日期
@@ -234,11 +231,27 @@ export default function MyPage() {
   // 添加自定义日期
   const handleAddDate = async () => {
     if (!newDateValue) return;
+    // 找到最近的已有股票列表的日期
+    const recentDateWithStocks = [...customDates]
+      .sort((a, b) => b.date.localeCompare(a.date))
+      .find(d => d.stocks.length > 0);
     const newDate = await createDate(newDateValue);
     if (newDate) {
       setAddingDate(false);
       setNewDateValue("");
-      setEditingDate(newDate);
+      if (recentDateWithStocks && recentDateWithStocks.stocks.length > 0) {
+        // 按原顺序逐个复制股票到新日期
+        const sortedStocks = [...recentDateWithStocks.stocks].sort((a, b) => a.sortOrder - b.sortOrder);
+        for (const s of sortedStocks) {
+          await addStockToDate(newDate.id, s.stockCode, s.stockName);
+        }
+        if (selectedBlock) {
+          refreshStocks(selectedBlock.id);
+        }
+      } else {
+        // 没有可复制的股票列表，进入编辑面板
+        setEditingDate(newDate);
+      }
     }
   };
 
@@ -439,6 +452,7 @@ export default function MyPage() {
     return (
       <EditDatePanel
         customDate={editingDate}
+        blockName={selectedBlock?.name}
         onAddStock={handleAddStockToDate}
         onRemoveStock={handleRemoveStockFromDate}
         onDeleteDate={handleDeleteDateFromEditor}
@@ -655,17 +669,7 @@ export default function MyPage() {
                   >
                     打开全部
                   </Button>
-                  <Button
-                    variant={showOnlyLimitUp ? "default" : "outline"}
-                    size="sm"
-                    className={cn(
-                      "h-6 px-2 text-[11px]",
-                      showOnlyLimitUp && "bg-red-600 hover:bg-red-700 text-white"
-                    )}
-                    onClick={() => setShowOnlyLimitUp(!showOnlyLimitUp)}
-                  >
-                    只看涨停
-                  </Button>
+
                 </>
               </div>
 
@@ -690,13 +694,7 @@ export default function MyPage() {
               ) : (
                 <div className="space-y-4">
                   {historyData
-                    .map((dayGroup) => ({
-                      ...dayGroup,
-                      stocks: showOnlyLimitUp
-                        ? dayGroup.stocks.filter((s) => s.source === "limitUp")
-                        : dayGroup.stocks,
-                    }))
-                    .filter((dayGroup) => dayGroup.stocks.length > 0 || !showOnlyLimitUp)
+                    .map((dayGroup) => dayGroup)
                     .map((dayGroup) => (
                       <DateStockGroup
                         key={dayGroup.date}
@@ -737,6 +735,9 @@ export default function MyPage() {
                         onDragStart={handleDragStart}
                         onDragOver={handleDragOver}
                         onDragEnd={handleDragEnd}
+                        onAddStock={dayGroup.customDateId ? async (stockCode: string, stockName: string) => {
+                          return addStockToDate(dayGroup.customDateId, stockCode, stockName);
+                        } : undefined}
                       />
                     ))}
                 </div>

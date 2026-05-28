@@ -115,18 +115,23 @@ export function QuickAddBlockStocksDialog({
     }
 
     setLoadingStocks(true);
-    fetch(`/api/block-detail?code=${selectedBlockCode}&days=1`)
+    fetch(`/api/block-detail?code=${selectedBlockCode}&days=10`)
       .then((res) => res.json())
       .then((result) => {
         const stocks: StockItem[] = [];
         const seen = new Set<string>();
         if (result.data && result.data.length > 0) {
-          result.data[0].stocks.forEach((s: any) => {
-            if (!seen.has(s.code)) {
-              seen.add(s.code);
-              stocks.push({ code: s.code, name: s.name });
+          // 遍历所有日期的股票，去重合并
+          for (const dayData of result.data) {
+            if (dayData.stocks) {
+              for (const s of dayData.stocks) {
+                if (!seen.has(s.code)) {
+                  seen.add(s.code);
+                  stocks.push({ code: s.code, name: s.name });
+                }
+              }
             }
-          });
+          }
         }
         setBlockStocks(stocks);
       })
