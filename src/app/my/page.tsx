@@ -83,7 +83,7 @@ export default function MyPage() {
   // 日期分组折叠状态
   const [collapsedDates, setCollapsedDates] = useState<Set<string>>(new Set());
 
-相关状态
+  // 拖动排序相关状态
   const [draggingStock, setDraggingStock] = useState<string | null>(null); // 正在拖动的 stockCode
   const [dragOverStock, setDragOverStock] = useState<string | null>(null); // 拖动经过的目标 stockCode
   const [dragDateId, setDragDateId] = useState<number | null>(null); // 当前拖动所在的日期
