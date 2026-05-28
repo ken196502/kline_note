@@ -1,15 +1,28 @@
 "use client";
 
+import { useState } from "react";
 import {
   Calendar,
   ChevronDown,
   Edit3,
   Trash2,
   GripVertical,
+  Plus,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import type { CustomDate } from "@/types/custom-date";
+import { AddStockDialog } from "@/components/add-stock-dialog";
 
 export interface DateStockItem {
   code: string;
@@ -58,6 +71,8 @@ interface DateStockGroupProps {
   onDragOver: (stockCode: string, dateId: number) => void;
   /** 拖动结束 */
   onDragEnd: () => void;
+  /** 添加股票到日期 */
+  onAddStock?: (stockCode: string, stockName: string) => Promise<boolean>;
 }
 
 export function DateStockGroup({
@@ -79,8 +94,24 @@ export function DateStockGroup({
   onDragStart,
   onDragOver,
   onDragEnd,
+  onAddStock,
 }: DateStockGroupProps) {
   const isSelected = (code: string) => selectedCode === code && selectedDate === date;
+
+  // 删除日期二次确认
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  // 添加股票弹窗
+  const [addStockOpen, setAddStockOpen] = useState(false);
+
+  const handleDeleteClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (customDateId) setDeleteConfirmOpen(true);
+  };
+
+  const handleConfirmDelete = () => {
+    setDeleteConfirmOpen(false);
+    onDelete(customDateId);
+  };
 
   return (
     <div>
@@ -119,10 +150,7 @@ export function DateStockGroup({
         <Button
           variant="ghost"
           size="sm"
-          onClick={(e) => {
-            e.stopPropagation();
-            if (customDateId) onDelete(customDateId);
-          }}
+          onClick={handleDeleteClick}
           className="h-4 w-4 p-0 opacity-0 group-hover:opacity-100 text-slate-300 hover:text-red-500 shrink-0"
         >
           <Trash2 className="w-3 h-3" />
@@ -149,7 +177,7 @@ export function DateStockGroup({
               onDragEnd={onDragEnd}
               onClick={() => onSelectStock(stock)}
               className={cn(
-                "w-[140px] shrink-0 flex flex-col px-2 py-1 border cursor-grab active:cursor-grabbing hover:bg-orange-50/50 transition-colors text-xs",
+                "w-[140px] shrink-0 flex items-stretch border hover:bg-orange-50/50 transition-colors text-xs cursor-pointer",
                 !stock.hasPrice && "border-dashed border-slate-200/60",
                 isSelected(stock.code) &&
                   "bg-orange-50/60 border-orange-200 border-solid",
@@ -159,31 +187,44 @@ export function DateStockGroup({
                   "border-orange-400 border-solid"
               )}
             >
-              <div className="flex items-center gap-1">
-                <GripVertical className="w-2.5 h-2.5 text-slate-300 shrink-0" />
-                <span
-                  className={cn(
-                    "font-medium truncate",
-                    isSelected(stock.code)
-                      ? "text-orange-700"
-                      : "text-slate-900"
-                  )}
-                >
-                  {stock.name}
-                </span>
-                <span className="text-[10px] text-slate-400 font-mono">
-                  {stock.code}
-                </span>
+              {/* 左侧拖动区域 */}
+              <div
+                draggable
+                onDragStart={(e) => {
+                  e.dataTransfer.effectAllowed = "move";
+                  e.dataTransfer.setData("text/plain", stock.code);
+                  onDragStart(stock.code, customDateId);
+                }}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = "move";
+                  onDragOver(stock.code, customDateId);
+                }}
+                onDragEnd={onDragEnd}
+                className="flex items-center cursor-grab active:cursor-grabbing px-0.5 border-r border-slate-100"
+              >
+                <GripVertical className="w-2.5 h-2.5 text-slate-300" />
               </div>
-              <div className="flex items-center gap-1.5">
-                {stock.hasPrice ? (
-                  <>
-                    <span className="font-mono text-[11px] text-slate-600">
-                      {stock.latest.toFixed(2)}
-                    </span>
+              {/* 右侧股票信息 */}
+              <div
+                className="flex-1 flex flex-col justify-center px-1.5 py-1"
+                onClick={() => onSelectStock(stock)}
+              >
+                <div className="flex items-center justify-between gap-1">
+                  <span
+                    className={cn(
+                      "font-medium truncate",
+                      isSelected(stock.code)
+                        ? "text-orange-700"
+                        : "text-slate-900"
+                    )}
+                  >
+                    {stock.name}
+                  </span>
+                  {stock.hasPrice ? (
                     <span
                       className={cn(
-                        "font-mono text-[11px]",
+                        "font-mono text-[11px] shrink-0",
                         stock.changeRate > 0
                           ? "text-red-600"
                           : stock.changeRate < 0
@@ -194,16 +235,63 @@ export function DateStockGroup({
                       {stock.changeRate > 0 ? "+" : ""}
                       {stock.changeRate.toFixed(2)}%
                     </span>
-                  </>
-                ) : (
-                  <span className="font-mono text-[11px] text-slate-300">
-                    --
+                  ) : (
+                    <span className="font-mono text-[11px] text-slate-300 shrink-0">--</span>
+                  )}
+                </div>
+                <div className="flex items-center justify-between gap-1">
+                  <span className="text-[10px] text-slate-400 font-mono">
+                    {stock.code}
                   </span>
-                )}
+                  {stock.hasPrice ? (
+                    <span className="font-mono text-[11px] text-slate-600 shrink-0">
+                      {stock.latest.toFixed(2)}
+                    </span>
+                  ) : (
+                    <span className="font-mono text-[11px] text-slate-300 shrink-0">--</span>
+                  )}
+                </div>
               </div>
             </div>
           ))}
+          {/* 小加号：快速添加股票 */}
+          {onAddStock && (
+            <button
+              onClick={() => setAddStockOpen(true)}
+              className="shrink-0 flex items-center justify-center w-6 h-6 text-slate-300 hover:text-orange-500 transition-colors"
+            >
+              <Plus className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
+      )}
+
+      {/* 删除日期确认弹窗 */}
+      <AlertDialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>确认删除日期</AlertDialogTitle>
+            <AlertDialogDescription>
+              确定要删除 {formatDate(date)} 吗？删除后该日期下的所有股票数据也将被清除，且无法恢复。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmDelete} className="bg-red-600 hover:bg-red-700">
+              确认删除
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* 添加股票弹窗 */}
+      {onAddStock && (
+        <AddStockDialog
+          open={addStockOpen}
+          onOpenChange={setAddStockOpen}
+          existingStockCodes={stocks.map((s) => s.code)}
+          onAddStock={onAddStock}
+        />
       )}
     </div>
   );
