@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseClient } from "@/storage/database/supabase-client";
 import { getCurrentUser } from "@/lib/auth";
-import { getRecentTradingDays } from "@/lib/trading-day";
 
 interface StockDayData {
   code: string;
@@ -13,16 +12,17 @@ interface StockDayData {
   sourceBlockName?: string;
   timePreview?: number[];
   hasPrice: boolean;
+  remark?: string;
 }
 
 interface DayGroup {
   date: string;
+  customDateId: number;
   stocks: StockDayData[];
 }
 
-// 获取自定义板块过往行情（最多10个交易日）
-// 只使用 stock_daily_price 和 stock_limit_up 中的真实历史数据
-// 不使用腾讯实时行情补充，避免历史日期显示错误价格
+// 获取自定义板块过往行情（基于自定义日期）
+// 日期来源于 custom_dates 表，而非涨停表
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
   const blockId = searchParams.get("blockId");
@@ -56,42 +56,97 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  // 从关联表获取所有股票代码和名称（保持固定顺序）
-  const { data: manualStocks } = await client
-    .from("custom_block_stocks")
-    .select("stock_code, stock_name")
-    .eq("custom_block_id", Number(blockId));
+  // 从 custom_dates 获取该板块下所有自定义日期
+  const { data: customDates, error: datesError } = await client
+    .from("custom_dates")
+    .select("id, date")
+    .eq("username", username)
+    .eq("custom_block_id", Number(blockId))
+    .order("date", { ascending: false });
 
-  const stockEntries: { code: string; name: string }[] = (
-    manualStocks || []
-  ).map((s) => ({
-    code: s.stock_code as string,
-    name: (s.stock_name as string) || "",
-  }));
-
-  const stockCodes = stockEntries.map((s) => s.code);
-  const nameMap = new Map<string, string>();
-  for (const entry of stockEntries) {
-    nameMap.set(entry.code, entry.name);
+  if (datesError) {
+    return NextResponse.json({ error: datesError.message }, { status: 500 });
   }
 
-  if (stockCodes.length === 0) {
+  if (!customDates || customDates.length === 0) {
     return NextResponse.json({ data: [] });
   }
 
-  // 获取最近10个交易日（使用A股时区 Asia/Shanghai）
-  const today = new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Shanghai" });
-  const recentDays = getRecentTradingDays(today, 10);
+  // 从 custom_date_stocks 获取每个日期内的股票（按 sort_order 排序）
+  const dateIds = customDates.map((d: any) => d.id);
+  const { data: dateStocks, error: stocksError } = await client
+    .from("custom_date_stocks")
+    .select("id, custom_date_id, stock_code, stock_name, sort_order, remark")
+    .in("custom_date_id", dateIds)
+    .order("sort_order", { ascending: true });
+
+  if (stocksError) {
+    return NextResponse.json({ error: stocksError.message }, { status: 500 });
+  }
+
+  // 构建 dateId -> stocks 映射
+  const stocksByDateId = new Map<number, { code: string; name: string; sortOrder: number; remark: string }[]>();
+  for (const s of dateStocks || []) {
+    const dateId = s.custom_date_id as number;
+    if (!stocksByDateId.has(dateId)) stocksByDateId.set(dateId, []);
+    stocksByDateId.get(dateId)!.push({
+      code: s.stock_code as string,
+      name: (s.stock_name as string) || "",
+      sortOrder: s.sort_order as number,
+      remark: (s.remark as string) || "",
+    });
+  }
+
+  // 收集所有股票代码
+  const allStockCodes = Array.from(stocksByDateId.values())
+    .flat()
+    .map((s) => s.code);
+  const uniqueStockCodes = [...new Set(allStockCodes)];
+
+  if (uniqueStockCodes.length === 0) {
+    // 有日期但日期内没股票
+    const result: DayGroup[] = customDates.map((d: any) => ({
+      date: d.date as string,
+      customDateId: d.id as number,
+      stocks: [],
+    }));
+    return NextResponse.json({ data: result });
+  }
+
+  // 收集所有日期
+  const allDates = customDates.map((d: any) => d.date as string);
 
   // 查询 stock_limit_up 中这些股票在这些日期的数据
   const { data: limitUpData } = await client
     .from("stock_limit_up")
     .select("date, stock_code, stock_name, latest, change_rate, block_code, block_name, market_type, time_preview")
-    .in("date", recentDays)
-    .in("stock_code", stockCodes);
+    .in("date", allDates)
+    .in("stock_code", uniqueStockCodes);
 
-  // 找出有涨停记录的日期
-  const datesWithActivity = new Set<string>();
+  // 同时查询 stock_daily_price 中这些股票在最新交易日的数据（用于非涨停日期的补充价格）
+  // 先获取所有不在 stock_limit_up 中的 stock_code，用最新交易日价格补充
+  const { data: latestDailyPrices } = await client
+    .from("stock_daily_price")
+    .select("stock_code, stock_name, price, change_rate, date")
+    .in("stock_code", uniqueStockCodes)
+    .order("date", { ascending: false });
+
+  // 构建 code -> 最新日价格数据映射
+  const latestDailyByCode = new Map<string, { price: number; changeRate: number; name: string; date: string }>();
+  const seenDailyCodes = new Set<string>();
+  for (const dp of latestDailyPrices || []) {
+    const code = dp.stock_code as string;
+    if (seenDailyCodes.has(code)) continue;
+    seenDailyCodes.add(code);
+    latestDailyByCode.set(code, {
+      price: dp.price as number,
+      changeRate: dp.change_rate as number,
+      name: (dp.stock_name as string) || "",
+      date: dp.date as string,
+    });
+  }
+
+  // 找出有涨停记录的数据
   const limitUpByDateAndCode = new Map<
     string,
     Map<
@@ -110,7 +165,6 @@ export async function GET(request: NextRequest) {
   for (const item of limitUpData || []) {
     const date = item.date as string;
     const code = item.stock_code as string;
-    datesWithActivity.add(date);
 
     if (!limitUpByDateAndCode.has(date)) {
       limitUpByDateAndCode.set(date, new Map());
@@ -133,26 +187,12 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  // 如果没有任何有行情的日期，使用最近交易日
-  if (datesWithActivity.size === 0) {
-    if (recentDays.length > 0) {
-      datesWithActivity.add(recentDays[0]);
-    } else {
-      return NextResponse.json({ data: [] });
-    }
-  }
-
-  // 按日期降序排列
-  const sortedDates = Array.from(datesWithActivity).sort(
-    (a, b) => b.localeCompare(a)
-  );
-
-  // 查询 stock_daily_price 获取各日期的价格（只取真实历史数据）
+  // 查询 stock_daily_price 获取各日期的价格
   const { data: dailyPrices } = await client
     .from("stock_daily_price")
     .select("date, stock_code, stock_name, price, change_rate")
-    .in("date", sortedDates)
-    .in("stock_code", stockCodes);
+    .in("date", allDates)
+    .in("stock_code", uniqueStockCodes);
 
   // 构建 date -> code -> price data 映射
   const dailyPriceByDateAndCode = new Map<
@@ -174,19 +214,23 @@ export async function GET(request: NextRequest) {
     });
   }
 
-  // 组装返回数据
-  // 排序规则：涨停股在前（按 stockEntries 顺序），非涨停股在后（按 stockEntries 顺序）
+  // 组装返回数据（按 custom_date_stocks.sort_order 排序）
   const result: DayGroup[] = [];
 
-  for (const date of sortedDates) {
-    const limitUpCodeMap = limitUpByDateAndCode.get(date);
-    const dailyMap = dailyPriceByDateAndCode.get(date);
+  for (const customDate of customDates) {
+    const dateStr = customDate.date as string;
+    const dateId = customDate.id as number;
+    const dateStocksList = stocksByDateId.get(dateId) || [];
+
+    const limitUpCodeMap = limitUpByDateAndCode.get(dateStr);
+    const dailyMap = dailyPriceByDateAndCode.get(dateStr);
     const limitUpCodesForDate = new Set(limitUpCodeMap?.keys() || []);
 
+    // 先排涨停，再排非涨停，但都遵循 sort_order
     const limitUpStocks: StockDayData[] = [];
     const nonLimitUpStocks: StockDayData[] = [];
 
-    for (const entry of stockEntries) {
+    for (const entry of dateStocksList) {
       const dailyPrice = dailyMap?.get(entry.code);
       const limitUpInfo = limitUpCodeMap?.get(entry.code);
 
@@ -195,7 +239,7 @@ export async function GET(request: NextRequest) {
         const hasPrice = dailyPrice?.price != null || limitUpInfo.latest != null;
         limitUpStocks.push({
           code: entry.code,
-          name: nameMap.get(entry.code) || dailyPrice?.name || entry.code,
+          name: entry.name || dailyPrice?.name || entry.code,
           latest: dailyPrice?.price ?? limitUpInfo.latest ?? 0,
           changeRate: dailyPrice?.changeRate ?? limitUpInfo.changeRate ?? 0,
           marketType: limitUpInfo.marketType || (entry.code.startsWith("6") ? "SH" : "SZ"),
@@ -203,23 +247,30 @@ export async function GET(request: NextRequest) {
           sourceBlockName: limitUpInfo.blockName,
           timePreview: limitUpInfo.timePreview,
           hasPrice,
+          remark: entry.remark,
         });
       } else {
-        // 非涨停股：只用 stock_daily_price 的价格
-        const hasPrice = dailyPrice?.price != null;
+        // 非涨停股：优先用 stock_daily_price 对应日期的价格，其次用最新交易日价格补充
+        const latestDaily = latestDailyByCode.get(entry.code);
+        const hasPrice = dailyPrice?.price != null || (latestDaily?.price != null && latestDaily.price > 0);
         nonLimitUpStocks.push({
           code: entry.code,
-          name: nameMap.get(entry.code) || dailyPrice?.name || entry.code,
-          latest: dailyPrice?.price ?? 0,
-          changeRate: dailyPrice?.changeRate ?? 0,
+          name: entry.name || dailyPrice?.name || latestDaily?.name || entry.code,
+          latest: dailyPrice?.price ?? latestDaily?.price ?? 0,
+          changeRate: dailyPrice?.changeRate ?? latestDaily?.changeRate ?? 0,
           marketType: entry.code.startsWith("6") ? "SH" : "SZ",
           source: "nonLimitUp",
           hasPrice,
+          remark: entry.remark,
         });
       }
     }
 
-    result.push({ date, stocks: [...limitUpStocks, ...nonLimitUpStocks] });
+    result.push({
+      date: dateStr,
+      customDateId: dateId,
+      stocks: [...limitUpStocks, ...nonLimitUpStocks],
+    });
   }
 
   return NextResponse.json({ data: result });

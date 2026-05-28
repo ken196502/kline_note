@@ -4,10 +4,9 @@ import { useState, useEffect, useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import {
   Plus,
-  Edit3,
   LogOut,
-  Calendar,
-  ChevronDown,
+  RefreshCw,
+  X,
 } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import { zhCN } from "date-fns/locale";
@@ -17,28 +16,18 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/hooks/use-auth";
 import { useCustomBlocks } from "@/hooks/use-custom-blocks";
-import { useNotes } from "@/hooks/use-notes";
+import { useCustomDates } from "@/hooks/use-custom-dates";
 import type { CustomBlock, CustomBlockStock } from "@/types/custom-block";
-import type { BlockData } from "@/types/block-data";
-import { EditBlockPanel } from "@/components/edit-block-panel";
+import type { CustomDate } from "@/types/custom-date";
+import { EditDatePanel } from "@/components/edit-date-panel";
 import { StockDetailPanel, type StockDetailInfo } from "@/components/stock-detail-panel";
+import { DateStockGroup, type DateStockItem } from "@/components/date-stock-group";
 
 // 历史行情日期分组类型
-interface HistoryStockDayData {
-  code: string;
-  name: string;
-  latest: number;
-  changeRate: number;
-  marketType: string;
-  source: "limitUp" | "nonLimitUp";
-  sourceBlockName?: string;
-  timePreview?: number[];
-  hasPrice?: boolean;
-}
-
 interface HistoryDayGroup {
   date: string;
-  stocks: HistoryStockDayData[];
+  customDateId: number;
+  stocks: DateStockItem[];
 }
 
 export default function MyPage() {
@@ -49,16 +38,28 @@ export default function MyPage() {
     loading: blocksLoading,
     createBlock,
     deleteBlock,
-    linkBlock,
-    unlinkBlock,
-    addStock,
-    removeStock,
     renameBlock,
   } = useCustomBlocks();
-  const { saveNote, getNote, preloadNotes } = useNotes();
 
   // 当前选中的自定义板块
   const [selectedBlock, setSelectedBlock] = useState<CustomBlock | null>(null);
+
+  // 自定义日期 hook（依赖 selectedBlock.id）
+  const {
+    dates: customDates,
+    loading: datesLoading,
+    createDate,
+    deleteDate,
+    addStockToDate,
+    removeStockFromDate,
+    reorderStocks,
+    updateRemark,
+    fetchDates: refetchDates,
+  } = useCustomDates(selectedBlock?.id ?? null);
+
+  // 添加日期相关状态
+  const [addingDate, setAddingDate] = useState(false);
+  const [newDateValue, setNewDateValue] = useState("");
   // 自定义板块的股票数据
   const [blockStocks, setBlockStocks] = useState<CustomBlockStock[]>([]);
   const [stocksDate, setStocksDate] = useState<string | null>(null);
@@ -71,8 +72,8 @@ export default function MyPage() {
   // 当前选中的股票
   const [selectedStock, setSelectedStock] = useState<StockDetailInfo | null>(null);
 
-  // 编辑模式
-  const [editingBlock, setEditingBlock] = useState<CustomBlock | null>(null);
+  // 编辑日期模式
+  const [editingDate, setEditingDate] = useState<CustomDate | null>(null);
 
   // 内联重命名
   const [renamingBlockId, setRenamingBlockId] = useState<number | null>(null);
@@ -85,12 +86,18 @@ export default function MyPage() {
   // 只看涨停
   const [showOnlyLimitUp, setShowOnlyLimitUp] = useState(false);
 
+  // 拖动排序相关状态
+  const [draggingStock, setDraggingStock] = useState<string | null>(null); // 正在拖动的 stockCode
+  const [dragOverStock, setDragOverStock] = useState<string | null>(null); // 拖动经过的目标 stockCode
+  const [dragDateId, setDragDateId] = useState<number | null>(null); // 当前拖动所在的日期
+
   // 创建板块
   const [creatingBlock, setCreatingBlock] = useState(false);
   const [newBlockName, setNewBlockName] = useState("");
 
-  // 可用板块列表（编辑页使用）
-  const [allAvailableBlocks, setAllAvailableBlocks] = useState<BlockData[]>([]);
+  // 修复股票名称
+  const [fixingNames, setFixingNames] = useState(false);
+  const [fixResult, setFixResult] = useState<string>("");
 
   // 股票详情抽屉（lg以下）
   const [stockDetailOpen, setStockDetailOpen] = useState(false);
@@ -105,27 +112,6 @@ export default function MyPage() {
     }
   }, [authLoading, authenticated, router]);
 
-  // 加载可用板块列表
-  useEffect(() => {
-    if (!authenticated) return;
-    const fetchAllBlocks = async () => {
-      const res = await fetch("/api/block-history?days=5");
-      if (res.ok) {
-        const result = await res.json();
-        const blockMap = new Map<string, BlockData>();
-        result.data.forEach((dayData: any) => {
-          dayData.blocks.forEach((b: BlockData) => {
-            if (!blockMap.has(b.code)) {
-              blockMap.set(b.code, b);
-            }
-          });
-        });
-        setAllAvailableBlocks(Array.from(blockMap.values()));
-      }
-    };
-    fetchAllBlocks();
-  }, [authenticated]);
-
   // 默认选中第一个自定义板块
   useEffect(() => {
     if (!selectedBlock && blocks.length > 0) {
@@ -133,7 +119,7 @@ export default function MyPage() {
     }
   }, [blocks, selectedBlock]);
 
-  // 选中自定义板块时加载历史行情
+  // 选中自定义板块时加载历史行情（基于自定义日期）
   useEffect(() => {
     if (!selectedBlock) {
       setHistoryData([]);
@@ -142,14 +128,16 @@ export default function MyPage() {
       return;
     }
     const loadHistory = async () => {
-      setHistoryLoading(true);
-      setStocksLoading(true);
+      const isFirstLoad = historyData.length === 0;
+      if (isFirstLoad) {
+        setHistoryLoading(true);
+        setStocksLoading(true);
+      }
       const res = await fetch(`/api/custom-block-stocks/history?blockId=${selectedBlock.id}`);
       if (res.ok) {
         const result = await res.json();
         const groups: HistoryDayGroup[] = result.data || [];
         setHistoryData(groups);
-        // 兼容：取最新一天的数据作为 blockStocks（供第三列详情使用）
         if (groups.length > 0) {
           const latestGroup = groups[0];
           setBlockStocks(
@@ -177,22 +165,9 @@ export default function MyPage() {
       }
       setHistoryLoading(false);
       setStocksLoading(false);
-      setSelectedStock(null);
     };
     loadHistory();
-  }, [selectedBlock?.id]);
-
-  // 预加载备注
-  useEffect(() => {
-    if (blockStocks.length > 0 && authenticated && username) {
-      const stockKeyList = blockStocks
-        .filter((s) => s.date)
-        .map((s) => ({ stockCode: s.code, stockDate: s.date }));
-      if (stockKeyList.length > 0) {
-        preloadNotes(stockKeyList);
-      }
-    }
-  }, [blockStocks, authenticated, username, preloadNotes]);
+  }, [selectedBlock?.id, customDates.length]);
 
   // 创建板块
   const handleCreateBlock = async () => {
@@ -205,10 +180,27 @@ export default function MyPage() {
     }
   };
 
-  // 刷新历史行情数据（编辑后调用）
+  // 修复所有股票名称乱码
+  const handleFixNames = async () => {
+    setFixingNames(true);
+    setFixResult("");
+    try {
+      const res = await fetch("/api/custom-block-stocks/fix-names", { method: "POST" });
+      const data = await res.json();
+      if (data.fixed > 0) {
+        setFixResult(`已修复 ${data.fixed} 个股票名称`);
+      } else {
+        setFixResult("无需修复");
+      }
+      setTimeout(() => setFixResult(""), 3000);
+    } finally {
+      setFixingNames(false);
+    }
+  };
+
+  // 刷新历史行情数据（从服务器重新加载）
   const refreshStocks = useCallback(
     async (blockId: number) => {
-      setHistoryLoading(true);
       const res = await fetch(`/api/custom-block-stocks/history?blockId=${blockId}`);
       if (res.ok) {
         const result = await res.json();
@@ -235,71 +227,146 @@ export default function MyPage() {
           setStocksDate(null);
         }
       }
-      setHistoryLoading(false);
     },
     []
   );
 
-  // 编辑面板回调
-  const handleLinkBlock = async (blockCode: string, blockName: string) => {
-    if (!editingBlock) return null;
-    const updated = await linkBlock(editingBlock.id, blockCode, blockName);
-    if (updated) {
-      setEditingBlock(updated);
-      if (selectedBlock?.id === updated.id) {
-        setSelectedBlock(updated);
-        refreshStocks(updated.id);
-      }
+  // 添加自定义日期
+  const handleAddDate = async () => {
+    if (!newDateValue) return;
+    const newDate = await createDate(newDateValue);
+    if (newDate) {
+      setAddingDate(false);
+      setNewDateValue("");
+      setEditingDate(newDate);
     }
-    return updated;
   };
 
-  const handleUnlinkBlock = async (blockCode: string) => {
-    if (!editingBlock) return null;
-    const updated = await unlinkBlock(editingBlock.id, blockCode);
-    if (updated) {
-      setEditingBlock(updated);
-      if (selectedBlock?.id === updated.id) {
-        setSelectedBlock(updated);
-        refreshStocks(updated.id);
-      }
+  // 删除自定义日期
+  const handleDeleteDate = async (dateId: number) => {
+    await deleteDate(dateId);
+    if (selectedBlock) {
+      refreshStocks(selectedBlock.id);
     }
-    return updated;
   };
 
-  const handleAddStock = async (code: string, name: string) => {
-    if (!editingBlock) return null;
-    const updated = await addStock(editingBlock.id, code, name);
-    if (updated) {
-      setEditingBlock(updated);
-      if (selectedBlock?.id === updated.id) {
-        setSelectedBlock(updated);
-        refreshStocks(updated.id);
-      }
-    }
-    return updated;
+  // 拖动排序处理
+  const handleDragStart = (stockCode: string, dateId: number) => {
+    setDraggingStock(stockCode);
+    setDragDateId(dateId);
   };
 
-  const handleRemoveStock = async (code: string) => {
-    if (!editingBlock) return null;
-    const updated = await removeStock(editingBlock.id, code);
-    if (updated) {
-      setEditingBlock(updated);
-      if (selectedBlock?.id === updated.id) {
-        setSelectedBlock(updated);
-        refreshStocks(updated.id);
-      }
+  const handleDragOver = (stockCode: string, dateId: number) => {
+    if (draggingStock && dragDateId === dateId && draggingStock !== stockCode) {
+      setDragOverStock(stockCode);
     }
-    return updated;
   };
 
-  const handleDeleteBlock = () => {
-    if (!editingBlock) return;
-    deleteBlock(editingBlock.id);
-    if (selectedBlock?.id === editingBlock.id) {
-      setSelectedBlock(blocks.find((b) => b.id !== editingBlock.id) || null);
+  const handleDragEnd = async () => {
+    if (!draggingStock || !dragOverStock || !dragDateId) {
+      setDraggingStock(null);
+      setDragOverStock(null);
+      setDragDateId(null);
+      return;
     }
-    setEditingBlock(null);
+
+    const currentGroup = historyData.find((g) => g.customDateId === dragDateId);
+    if (!currentGroup) {
+      setDraggingStock(null);
+      setDragOverStock(null);
+      setDragDateId(null);
+      return;
+    }
+
+    const stocks = [...currentGroup.stocks];
+    const dragIndex = stocks.findIndex((s) => s.code === draggingStock);
+    const overIndex = stocks.findIndex((s) => s.code === dragOverStock);
+    if (dragIndex === -1 || overIndex === -1) {
+      setDraggingStock(null);
+      setDragOverStock(null);
+      setDragDateId(null);
+      return;
+    }
+
+    const [removed] = stocks.splice(dragIndex, 1);
+    stocks.splice(overIndex, 0, removed);
+
+    // 立即更新本地 historyData，让 UI 立刻反映新顺序
+    setHistoryData((prev) =>
+      prev.map((g) =>
+        g.customDateId === dragDateId
+          ? { ...g, stocks: stocks }
+          : g
+      )
+    );
+
+    const stockOrders = stocks.map((s, i) => ({
+      stockCode: s.code,
+      sortOrder: i,
+    }));
+
+    await reorderStocks(dragDateId, stockOrders);
+
+    setDraggingStock(null);
+    setDragOverStock(null);
+    setDragDateId(null);
+  };
+
+  // 编辑日期面板回调
+  const handleAddStockToDate = async (stockCode: string, stockName: string) => {
+    if (!editingDate) return false;
+    const ok = await addStockToDate(editingDate.id, stockCode, stockName);
+    if (ok) {
+      // 更新 editingDate 的本地 stocks
+      setEditingDate((prev) => {
+        if (!prev) return null;
+        return {
+          ...prev,
+          stocks: [
+            ...prev.stocks,
+            {
+              id: -1, // 临时ID
+              customDateId: prev.id,
+              stockCode,
+              stockName,
+              sortOrder: prev.stocks.length,
+              remark: "",
+            },
+          ],
+        };
+      });
+      if (selectedBlock) {
+        refreshStocks(selectedBlock.id);
+      }
+    }
+    return ok;
+  };
+
+  const handleRemoveStockFromDate = async (stockCode: string) => {
+    if (!editingDate) return false;
+    const ok = await removeStockFromDate(editingDate.id, stockCode);
+    if (ok) {
+      setEditingDate((prev) => {
+        if (!prev) return null;
+        return {
+          ...prev,
+          stocks: prev.stocks.filter((s) => s.stockCode !== stockCode),
+        };
+      });
+      if (selectedBlock) {
+        refreshStocks(selectedBlock.id);
+      }
+    }
+    return ok;
+  };
+
+  const handleDeleteDateFromEditor = async () => {
+    if (!editingDate) return;
+    await deleteDate(editingDate.id);
+    setEditingDate(null);
+    if (selectedBlock) {
+      refreshStocks(selectedBlock.id);
+    }
   };
 
   // 内联重命名处理
@@ -331,6 +398,17 @@ export default function MyPage() {
     setRenamingBlockId(null);
   };
 
+  // K线数据加载完成后，延迟刷新历史行情（等待服务端异步写入stock_daily_price）
+  const handleKLineLoaded = useCallback(
+    (_symbol: string) => {
+      if (!selectedBlock) return;
+      setTimeout(() => {
+        refreshStocks(selectedBlock.id);
+      }, 1000);
+    },
+    [selectedBlock, refreshStocks]
+  );
+
   // 选中股票查看详情
   const handleSelectStock = (stock: CustomBlockStock) => {
     setSelectedStock({
@@ -356,18 +434,15 @@ export default function MyPage() {
 
   
 
-  // ===== 编辑模式 =====
-  if (editingBlock) {
+  // ===== 编辑日期模式 =====
+  if (editingDate) {
     return (
-      <EditBlockPanel
-        block={editingBlock}
-        allAvailableBlocks={allAvailableBlocks}
-        onLinkBlock={handleLinkBlock}
-        onUnlinkBlock={handleUnlinkBlock}
-        onAddStock={handleAddStock}
-        onRemoveStock={handleRemoveStock}
-        onDeleteBlock={handleDeleteBlock}
-        onBack={() => setEditingBlock(null)}
+      <EditDatePanel
+        customDate={editingDate}
+        onAddStock={handleAddStockToDate}
+        onRemoveStock={handleRemoveStockFromDate}
+        onDeleteDate={handleDeleteDateFromEditor}
+        onBack={() => setEditingDate(null)}
       />
     );
   }
@@ -375,36 +450,63 @@ export default function MyPage() {
   // ===== 展示模式 =====
   return (
     <div className="h-screen flex flex-col bg-slate-50 overflow-hidden">
-      {/* Header */}
-      <header className="shrink-0 z-40 bg-white border-b border-slate-200">
-        <div className="px-4 py-3">
-          <div className="flex items-center justify-between">
-            <h1 className="text-lg font-bold text-slate-900">复盘</h1>
-            <div className="flex items-center gap-2">
-              {authenticated && username && (
-                <div className="flex items-center gap-2">
-                  <span className="text-sm text-slate-500">{username}</span>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={logout}
-                    className="text-slate-400 hover:text-red-500 h-7 w-7 p-0"
-                  >
-                    <LogOut className="w-3.5 h-3.5" />
-                  </Button>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      </header>
-
       {/* 三列布局 */}
       <div className="flex-1 flex overflow-hidden">
         {/* 第一列 - 自定义板块列表 */}
         <div className="w-48 lg:w-56 shrink-0 border-r border-slate-200 bg-white flex flex-col">
           {/* 板块列表 */}
           <div className="flex-1 overflow-y-auto p-1">
+            {/* 添加板块按钮 - 置顶 */}
+            <div className="p-1 mb-1">
+              {creatingBlock ? (
+                <div className="flex gap-1">
+                  <Input
+                    value={newBlockName}
+                    onChange={(e) => setNewBlockName(e.target.value)}
+                    placeholder="板块名称"
+                    className="h-7 text-xs"
+                    autoFocus
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") handleCreateBlock();
+                      if (e.key === "Escape") setCreatingBlock(false);
+                    }}
+                  />
+                  <Button
+                    size="sm"
+                    onClick={handleCreateBlock}
+                    className="h-7 px-2 text-xs"
+                  >
+                    确定
+                  </Button>
+                </div>
+              ) : (
+                <div className="flex gap-1">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setCreatingBlock(true)}
+                    className="flex-1 h-7 text-xs text-slate-500 hover:text-orange-600"
+                  >
+                    <Plus className="w-3.5 h-3.5 mr-1" />
+                    添加板块
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleFixNames}
+                    disabled={fixingNames}
+                    className="h-7 px-1.5 text-slate-400 hover:text-orange-600"
+                    title="修复股票名称乱码"
+                  >
+                    <RefreshCw className={cn("w-3.5 h-3.5", fixingNames && "animate-spin")} />
+                  </Button>
+                </div>
+              )}
+              {fixResult && (
+                <div className="text-[10px] text-orange-600 px-1 mt-0.5">{fixResult}</div>
+              )}
+            </div>
+
             {blocksLoading && blocks.length === 0 ? (
               <div className="p-2">
                 <Skeleton className="h-6 w-full mb-1" />
@@ -453,17 +555,6 @@ export default function MyPage() {
                       >
                         {block.name}
                       </span>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setEditingBlock(block);
-                        }}
-                        className="h-5 w-5 p-0 opacity-0 group-hover:opacity-100 text-slate-400 hover:text-orange-600 shrink-0"
-                      >
-                        <Edit3 className="w-3 h-3" />
-                      </Button>
                     </>
                   )}
                 </div>
@@ -471,44 +562,23 @@ export default function MyPage() {
             )}
           </div>
 
-          {/* 添加板块按钮 - 置底 */}
+          {/* 登出按钮 - 置底 */}
           <div className="p-2 border-t border-slate-100">
-            {creatingBlock ? (
-              <div className="flex gap-1">
-                <Input
-                  value={newBlockName}
-                  onChange={(e) => setNewBlockName(e.target.value)}
-                  placeholder="板块名称"
-                  className="h-7 text-xs"
-                  autoFocus
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") handleCreateBlock();
-                    if (e.key === "Escape") setCreatingBlock(false);
-                  }}
-                />
-                <Button
-                  size="sm"
-                  onClick={handleCreateBlock}
-                  className="h-7 px-2 text-xs"
-                >
-                  确定
-                </Button>
-              </div>
-            ) : (
+            <div className="flex items-center justify-between px-1">
+              <span className="text-xs text-slate-400 truncate">{username}</span>
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => setCreatingBlock(true)}
-                className="w-full h-7 text-xs text-slate-500 hover:text-orange-600"
+                onClick={logout}
+                className="text-slate-400 hover:text-red-500 h-7 w-7 p-0 shrink-0"
               >
-                <Plus className="w-3.5 h-3.5 mr-1" />
-                添加板块
+                <LogOut className="w-3.5 h-3.5" />
               </Button>
-            )}
+            </div>
           </div>
         </div>
 
-        {/* 第二列 - 历史行情（按日期分组） */}
+        {/* 第二列 - 历史行情（按自定义日期分组） */}
         <div className="flex-1 lg:min-w-[40%] lg:border-r lg:border-slate-200 bg-white overflow-y-auto relative">
           {!selectedBlock ? (
             <div className="flex items-center justify-center h-full text-sm text-slate-400">
@@ -516,9 +586,55 @@ export default function MyPage() {
             </div>
           ) : (
             <div className="p-3">
-              {/* 固定在右上角的操作按钮 */}
-              {!historyLoading && historyData.length > 0 && (
-                <div className="sticky z-50 flex justify-end gap-1.5 -mt-3 -mr-3 mb-2 p-2 bg-white/80 backdrop-blur-sm">
+              {/* 顶部：添加日期按钮 + 操作按钮 */}
+              <div className="flex items-center gap-1.5 -mt-1 mb-2 flex-wrap">
+                {/* 添加日期按钮 - 左上角 */}
+                {addingDate ? (
+                  <div className="flex items-center gap-1">
+                    <Input
+                      type="date"
+                      value={newDateValue}
+                      onChange={(e) => setNewDateValue(e.target.value)}
+                      className="h-6 text-xs w-[140px]"
+                      autoFocus
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") handleAddDate();
+                        if (e.key === "Escape") { setAddingDate(false); setNewDateValue(""); }
+                      }}
+                    />
+                    <Button
+                      size="sm"
+                      onClick={handleAddDate}
+                      disabled={!newDateValue}
+                      className="h-6 px-2 text-[11px]"
+                    >
+                      确定
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => { setAddingDate(false); setNewDateValue(""); }}
+                      className="h-6 px-1.5 text-slate-400"
+                    >
+                      <X className="w-3 h-3" />
+                    </Button>
+                  </div>
+                ) : (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setAddingDate(true)}
+                    className="h-6 px-2 text-[11px] text-slate-600"
+                  >
+                    <Plus className="w-3 h-3 mr-1" />
+                    添加日期
+                  </Button>
+                )}
+
+                <div className="flex-1" />
+
+                {/* 右侧操作按钮 - 始终显示 */}
+                <>
                   <Button
                     variant="outline"
                     size="sm"
@@ -550,8 +666,8 @@ export default function MyPage() {
                   >
                     只看涨停
                   </Button>
-                </div>
-              )}
+                </>
+              </div>
 
               {/* 按日期分组的历史行情 */}
               {historyLoading ? (
@@ -569,11 +685,10 @@ export default function MyPage() {
                 </div>
               ) : historyData.length === 0 ? (
                 <div className="text-sm text-slate-400 text-center py-8">
-                  暂无历史行情数据，点击编辑添加股票
+                  暂无数据，请点击左上角"添加日期"
                 </div>
               ) : (
                 <div className="space-y-4">
-
                   {historyData
                     .map((dayGroup) => ({
                       ...dayGroup,
@@ -581,114 +696,49 @@ export default function MyPage() {
                         ? dayGroup.stocks.filter((s) => s.source === "limitUp")
                         : dayGroup.stocks,
                     }))
-                    .filter((dayGroup) => dayGroup.stocks.length > 0)
+                    .filter((dayGroup) => dayGroup.stocks.length > 0 || !showOnlyLimitUp)
                     .map((dayGroup) => (
-                    <div key={dayGroup.date}>
-                      {/* 日期标题 - 可点击折叠 */}
-                      <div
-                        className="flex items-center gap-1.5 mb-2 cursor-pointer select-none"
-                        onClick={() => {
+                      <DateStockGroup
+                        key={dayGroup.date}
+                        date={dayGroup.date}
+                        customDateId={dayGroup.customDateId}
+                        stocks={dayGroup.stocks}
+                        collapsed={collapsedDates.has(dayGroup.date)}
+                        selectedCode={selectedStock?.code ?? null}
+                        selectedDate={selectedStock?.date ?? null}
+                        draggingStock={draggingStock}
+                        dragOverStock={dragOverStock}
+                        dragDateId={dragDateId}
+                        formatDate={formatDate}
+                        customDates={customDates}
+                        onToggleCollapse={(d) => {
                           setCollapsedDates((prev) => {
                             const next = new Set(prev);
-                            if (next.has(dayGroup.date)) {
-                              next.delete(dayGroup.date);
-                            } else {
-                              next.add(dayGroup.date);
-                            }
+                            if (next.has(d)) next.delete(d);
+                            else next.add(d);
                             return next;
                           });
                         }}
-                      >
-                        <ChevronDown
-                          className={cn(
-                            "w-3 h-3 text-slate-400 transition-transform",
-                            collapsedDates.has(dayGroup.date) && "-rotate-90"
-                          )}
-                        />
-                        <Calendar className="w-3 h-3 text-slate-400" />
-                        <span className="text-xs font-semibold text-slate-600">
-                          {formatDate(dayGroup.date)}
-                        </span>
-                        <span className="text-[10px] text-slate-400">
-                          {dayGroup.stocks.length}只
-                        </span>
-                      </div>
-
-                      {/* 该日期下的股票列表 - 折叠时隐藏 */}
-                      {!collapsedDates.has(dayGroup.date) && (
-                      <div className="flex flex-wrap gap-1.5">
-                        {dayGroup.stocks.map((stock) => (
-                          <div
-                            key={`${dayGroup.date}-${stock.code}`}
-                            onClick={() =>
-                              handleSelectStock({
-                                code: stock.code,
-                                name: stock.name,
-                                latest: stock.latest,
-                                changeRate: stock.changeRate,
-                                date: dayGroup.date,
-                                timePreview: stock.timePreview,
-                                marketType: stock.marketType,
-                                source: stock.source,
-                                sourceBlockName: stock.sourceBlockName,
-                              })
-                            }
-                            className={cn(
-                              "w-[110px] flex flex-col px-2 py-1 border border-slate-200 hover:bg-orange-50/50 transition-colors cursor-pointer text-xs",
-                              !stock.hasPrice && "border-dashed border-slate-200/60",
-                              selectedStock?.code === stock.code &&
-                                selectedStock?.date === dayGroup.date &&
-                                "bg-orange-50/60 border-orange-200 border-solid"
-                            )}
-                          >
-                            <div className="flex items-center gap-1">
-                              <span
-                                className={cn(
-                                  "font-medium truncate max-w-[60px]",
-                                  selectedStock?.code === stock.code &&
-                                    selectedStock?.date === dayGroup.date
-                                    ? "text-orange-700"
-                                    : "text-slate-900"
-                                )}
-                              >
-                                {stock.name}
-                              </span>
-                              <span className="text-[10px] text-slate-400 font-mono">
-                                {stock.code}
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-1.5">
-                              {stock.hasPrice ? (
-                                <>
-                                  <span className="font-mono text-[11px] text-slate-600">
-                                    {stock.latest.toFixed(2)}
-                                  </span>
-                                  <span
-                                    className={cn(
-                                      "font-mono text-[11px]",
-                                      stock.changeRate > 0
-                                        ? "text-red-600"
-                                        : stock.changeRate < 0
-                                        ? "text-green-600"
-                                        : "text-slate-400"
-                                    )}
-                                  >
-                                    {stock.changeRate > 0 ? "+" : ""}
-                                    {stock.changeRate.toFixed(2)}%
-                                  </span>
-                                </>
-                              ) : (
-                                <span className="font-mono text-[11px] text-slate-300">
-                                  --
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                      )}
-                    </div>
-                  ))}
+                        onEdit={(cd) => setEditingDate(cd)}
+                        onDelete={handleDeleteDate}
+                        onSelectStock={(stock) =>
+                          handleSelectStock({
+                            code: stock.code,
+                            name: stock.name,
+                            latest: stock.latest,
+                            changeRate: stock.changeRate,
+                            date: dayGroup.date,
+                            timePreview: stock.timePreview,
+                            marketType: stock.marketType,
+                            source: stock.source,
+                            sourceBlockName: stock.sourceBlockName,
+                          })
+                        }
+                        onDragStart={handleDragStart}
+                        onDragOver={handleDragOver}
+                        onDragEnd={handleDragEnd}
+                      />
+                    ))}
                 </div>
               )}
 
@@ -698,8 +748,32 @@ export default function MyPage() {
 
         <StockDetailPanel
           selectedStock={selectedStock}
-          getNote={getNote}
-          saveNote={saveNote}
+          getNote={(code, date) => {
+            const group = historyData.find((g) => g.date === date);
+            const stock = group?.stocks.find((s) => s.code === code);
+            return stock?.remark || "";
+          }}
+          saveNote={async (code, date, content) => {
+            const group = historyData.find((g) => g.date === date);
+            if (group?.customDateId) {
+              await updateRemark(group.customDateId, code, content);
+              // 更新 historyData 中的 remark
+              setHistoryData((prev) =>
+                prev.map((g) =>
+                  g.date === date
+                    ? {
+                        ...g,
+                        stocks: g.stocks.map((s) =>
+                          s.code === code ? { ...s, remark: content } : s
+                        ),
+                      }
+                    : g
+                )
+              );
+              return true;
+            }
+            return false;
+          }}
           formatDate={formatDate}
           username={username}
           noteHeightClass="h-42"
@@ -707,6 +781,7 @@ export default function MyPage() {
           stockDetailOpen={stockDetailOpen}
           setStockDetailOpen={setStockDetailOpen}
           openNoteRequest={openNoteRequest}
+          onKLineLoaded={handleKLineLoaded}
         />
       </div>
     </div>
