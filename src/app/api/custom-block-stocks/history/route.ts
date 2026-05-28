@@ -79,8 +79,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ data: [] });
   }
 
-  // 获取最近10个交易日
-  const today = new Date().toISOString().split("T")[0];
+  // 获取最近10个交易日（使用A股时区 Asia/Shanghai）
+  const today = new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Shanghai" });
   const recentDays = getRecentTradingDays(today, 10);
 
   // 查询 stock_limit_up 中这些股票在这些日期的数据

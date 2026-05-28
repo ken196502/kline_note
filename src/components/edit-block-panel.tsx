@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import {
   Plus,
   X,
@@ -10,6 +10,9 @@ import {
   ArrowLeft,
   Check,
   Loader2,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
 } from "lucide-react";
 import { pinyin } from "pinyin-pro";
 import { cn } from "@/lib/utils";
@@ -56,6 +59,14 @@ export function EditBlockPanel({
   const [addingCode, setAddingCode] = useState(false);
   const [removingCode, setRemovingCode] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [autoNameLoading, setAutoNameLoading] = useState(false);
+
+  // 手动股票列表排序
+  const [sortField, setSortField] = useState<"code" | "name">("code");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+
+  // 记录上次查询过的代码，避免重复查询（如粘贴触发）
+  const lastFetchedCode = useRef<string>("");
 
   // 按拼音首字母分组（参考板块详情页的板块菜单）
   const groupedBlocks = useMemo(() => {
@@ -99,6 +110,56 @@ export function EditBlockPanel({
     () => new Set(block.linkedBlocks.map((b) => b.code)),
     [block.linkedBlocks]
   );
+
+  // 输入满6位代码时自动查询名称（粘贴也能触发）
+  useEffect(() => {
+    if (stockCodeInput.length === 6 && stockCodeInput !== lastFetchedCode.current) {
+      lastFetchedCode.current = stockCodeInput;
+      setAutoNameLoading(true);
+      fetch(`/api/stock-info?code=${stockCodeInput}`)
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.name) {
+            setStockNameInput(data.name);
+          }
+        })
+        .finally(() => setAutoNameLoading(false));
+    }
+    if (stockCodeInput.length < 6) {
+      lastFetchedCode.current = "";
+      setStockNameInput("");
+    }
+  }, [stockCodeInput]);
+
+  // 排序后的手动股票列表
+  const sortedManualStocks = useMemo(() => {
+    const list = [...block.manualStocks];
+    list.sort((a, b) => {
+      const va = sortField === "code" ? a.code : (a.name || "");
+      const vb = sortField === "code" ? b.code : (b.name || "");
+      const cmp = va.localeCompare(vb, "zh-CN");
+      return sortDir === "asc" ? cmp : -cmp;
+    });
+    return list;
+  }, [block.manualStocks, sortField, sortDir]);
+
+  const toggleSort = (field: "code" | "name") => {
+    if (sortField === field) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortField(field);
+      setSortDir("asc");
+    }
+  };
+
+  const SortIcon = ({ field }: { field: "code" | "name" }) => {
+    if (sortField !== field) return <ArrowUpDown className="w-3 h-3 text-slate-300" />;
+    return sortDir === "asc" ? (
+      <ArrowUp className="w-3 h-3 text-orange-500" />
+    ) : (
+      <ArrowDown className="w-3 h-3 text-orange-500" />
+    );
+  };
 
   const handleLink = async (code: string, name: string) => {
     setLinkingCode(code);
@@ -335,17 +396,22 @@ export function EditBlockPanel({
                 }
               }}
             />
-            <Input
-              value={stockNameInput}
-              onChange={(e) => setStockNameInput(e.target.value)}
-              placeholder="股票名称"
-              className="h-9 text-sm flex-1"
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && stockCodeInput.length === 6 && stockNameInput.trim()) {
-                  handleAddStock();
-                }
-              }}
-            />
+            <div className="relative flex-1">
+              <Input
+                value={stockNameInput}
+                onChange={(e) => setStockNameInput(e.target.value)}
+                placeholder="股票名称"
+                className="h-9 text-sm w-full"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && stockCodeInput.length === 6 && stockNameInput.trim()) {
+                    handleAddStock();
+                  }
+                }}
+              />
+              {autoNameLoading && (
+                <Loader2 className="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 animate-spin text-slate-400" />
+              )}
+            </div>
             <Button
               size="sm"
               onClick={handleAddStock}
@@ -362,23 +428,36 @@ export function EditBlockPanel({
 
           {block.manualStocks.length > 0 ? (
             <div className="border border-slate-200 rounded bg-white">
-              <div className="px-3 py-1.5 border-b border-slate-100">
-                <span className="text-xs text-slate-500">
-                  股票 ({block.manualStocks.length})
-                </span>
+              {/* 表头：可排序 */}
+              <div className="flex items-center border-b border-slate-100 text-xs text-slate-500">
+                <button
+                  onClick={() => toggleSort("code")}
+                  className="flex items-center gap-0.5 px-3 py-1.5 hover:text-slate-700 transition-colors"
+                >
+                  代码
+                  <SortIcon field="code" />
+                </button>
+                <button
+                  onClick={() => toggleSort("name")}
+                  className="flex items-center gap-0.5 px-3 py-1.5 hover:text-slate-700 transition-colors flex-1"
+                >
+                  名称
+                  <SortIcon field="name" />
+                </button>
+                <span className="px-3 py-1.5 w-8" />
               </div>
-              <div className="max-h-48 overflow-y-auto divide-y divide-slate-50">
-                {block.manualStocks.map((stock) => (
+              <div className="max-h-[calc(100vh-420px)] min-h-48 overflow-y-auto divide-y divide-slate-50">
+                {sortedManualStocks.map((stock) => (
                   <div
                     key={stock.code}
                     className="flex items-center justify-between px-3 py-1.5"
                   >
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-3">
+                      <span className="text-xs font-mono text-slate-500 w-14">
+                        {stock.code}
+                      </span>
                       <span className="text-sm text-slate-900">
                         {stock.name || stock.code}
-                      </span>
-                      <span className="text-xs font-mono text-slate-400">
-                        {stock.code}
                       </span>
                     </div>
                     <button
