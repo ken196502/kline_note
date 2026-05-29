@@ -37,7 +37,7 @@ export async function GET(request: NextRequest) {
   if (dateIds.length > 0) {
     const { data: stocks } = await client
       .from("custom_date_stocks")
-      .select("id, custom_date_id, stock_code, stock_name, sort_order, remark")
+      .select("id, custom_date_id, stock_code, stock_name, sort_order, remark, stock_name_color")
       .in("custom_date_id", dateIds)
       .order("sort_order", { ascending: true });
 
@@ -51,6 +51,7 @@ export async function GET(request: NextRequest) {
         stockName: s.stock_name,
         sortOrder: s.sort_order,
         remark: s.remark || "",
+        stockNameColor: (s.stock_name_color as string) || "",
       });
     }
   }

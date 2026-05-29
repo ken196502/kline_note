@@ -70,7 +70,7 @@ export function useCustomDates(blockId: number | null) {
 
   // 添加股票到日期
   const addStockToDate = useCallback(
-    async (dateId: number, stockCode: string, stockName: string): Promise<boolean> => {
+    async (dateId: number, stockCode: string, stockName: string): Promise<{ success: boolean; error?: string }> => {
       const res = await fetch(`/api/custom-dates/${dateId}/stocks`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -79,7 +79,7 @@ export function useCustomDates(blockId: number | null) {
       if (!res.ok) {
         const data = await res.json();
         setError(new Error(data.error || "添加股票失败"));
-        return false;
+        return { success: false, error: data.error || "添加股票失败" };
       }
       const result = await res.json();
       const newStock = result.data as CustomDateStock;
@@ -91,7 +91,7 @@ export function useCustomDates(blockId: number | null) {
             : d
         )
       );
-      return true;
+      return { success: true };
     },
     []
   );
@@ -165,7 +165,6 @@ export function useCustomDates(blockId: number | null) {
         setError(new Error("更新备注失败"));
         return false;
       }
-      // 更新本地状态
       setDates((prev) =>
         prev.map((d) =>
           d.id === dateId
@@ -173,6 +172,35 @@ export function useCustomDates(blockId: number | null) {
                 ...d,
                 stocks: d.stocks.map((s) =>
                   s.stockCode === stockCode ? { ...s, remark } : s
+                ),
+              }
+            : d
+        )
+      );
+      return true;
+    },
+    []
+  );
+
+  // 更新股票名称颜色
+  const updateStockColor = useCallback(
+    async (dateId: number, stockCode: string, stockNameColor: string): Promise<boolean> => {
+      const res = await fetch(`/api/custom-dates/${dateId}/stocks`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ stockCode, stockNameColor }),
+      });
+      if (!res.ok) {
+        setError(new Error("更新颜色失败"));
+        return false;
+      }
+      setDates((prev) =>
+        prev.map((d) =>
+          d.id === dateId
+            ? {
+                ...d,
+                stocks: d.stocks.map((s) =>
+                  s.stockCode === stockCode ? { ...s, stockNameColor } : s
                 ),
               }
             : d
@@ -194,5 +222,6 @@ export function useCustomDates(blockId: number | null) {
     removeStockFromDate,
     reorderStocks,
     updateRemark,
+    updateStockColor,
   };
 }

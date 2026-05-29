@@ -17,27 +17,20 @@ export async function GET(request: Request) {
 
   const client = getSupabaseClient();
 
-  // 从 stock_limit_up 表搜索：按代码前缀或名称模糊匹配
+  // 通过 RPC 调用数据库函数，在 stock_limit_up 全表中 DISTINCT 搜索
   const { data, error } = await client
-    .from("stock_limit_up")
-    .select("stock_code, stock_name")
-    .or(`stock_code.ilike.${q}%,stock_name.ilike.%${q}%`)
-    .order("stock_code", { ascending: true })
-    .limit(30);
+    .rpc("search_stocks", { search_query: q });
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  // 去重：同一股票代码只保留一条
-  const seen = new Set<string>();
-  const results: { code: string; name: string }[] = [];
-  for (const row of data || []) {
-    if (!seen.has(row.stock_code)) {
-      seen.add(row.stock_code);
-      results.push({ code: row.stock_code, name: row.stock_name });
-    }
-  }
+  const results: { code: string; name: string }[] = (data || []).map(
+    (row: { stock_code: string; stock_name: string }) => ({
+      code: row.stock_code,
+      name: row.stock_name,
+    })
+  );
 
   return NextResponse.json({ results });
 }

@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { init, dispose } from "klinecharts";
-import { Skeleton } from "@/components/ui/skeleton";
+
 
 interface KLineChartData {
   date: string;
@@ -23,35 +23,20 @@ export function KLineChart({ symbol, stockName, onDataLoaded }: KLineChartProps)
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<ReturnType<typeof init> | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
-  const [loading, setLoading] = useState(true);
   const currentSymbolRef = useRef(symbol);
+  const initializedRef = useRef(false);
 
+  // 初始化图表（只执行一次）
   useEffect(() => {
-    if (!containerRef.current || !symbol) return;
+    if (!containerRef.current) return;
 
     const container = containerRef.current;
     const containerId = "kline-chart-container";
     container.id = containerId;
 
-    // 记录当前 symbol
-    currentSymbolRef.current = symbol;
-    const currentSymbol = symbol;
+    if (initializedRef.current) return;
+    initializedRef.current = true;
 
-    // 取消之前的请求
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-    }
-    abortControllerRef.current = new AbortController();
-
-    // 销毁旧图表
-    if (chartRef.current) {
-      chartRef.current = null;
-    }
-    dispose(containerId);
-
-    setLoading(true);
-
-    // 创建图表，layout 中声明成交量副图面板
     const chart = init(containerId, {
       layout: {
         panes: [
@@ -65,83 +50,127 @@ export function KLineChart({ symbol, stockName, onDataLoaded }: KLineChartProps)
         ],
       },
     });
-    if (!chart) {
-      setLoading(false);
-      return;
-    }
+    if (!chart) return;
 
     chartRef.current = chart;
-    chart.setSymbol({ ticker: stockName || currentSymbol });
     chart.setPeriod({ span: 1, type: "day" });
     chart.setStyles({
       candle: {
+        priceMark: {
+          high: { color: "#E94040" },
+          low: { color: "#2DC08E" },
+        },
         tooltip: {
           title: {
             show: false,
           },
         },
       },
+      indicator: {
+        last: { color: "#E94040" },
+      },
+      grid: {
+        horizontal: {
+          color: "rgba(0, 0, 0, 0.05)",
+        },
+        vertical: {
+          color: "rgba(0, 0, 0, 0.05)",
+        },
+      },
+      xAxis: {
+        axisLine: { color: "rgba(0, 0, 0, 0.1)" },
+        tickLine: { color: "rgba(0, 0, 0, 0.1)" },
+      },
+      yAxis: {
+        axisLine: { color: "rgba(0, 0, 0, 0.1)" },
+        tickLine: { color: "rgba(0, 0, 0, 0.1)" },
+      },
     });
 
-    // 设置数据加载器
+    // 红涨绿跌样式
+    chart.setStyles({
+      candle: {
+        bar: {
+          upColor: "#E94040",
+          downColor: "#2DC08E",
+          upBorderColor: "#E94040",
+          downBorderColor: "#2DC08E",
+          upWickColor: "#E94040",
+          downWickColor: "#2DC08E",
+        },
+      },
+    });
+
+    // 默认显示 MA 均线（叠加在蜡烛图上）
+    chart.createIndicator("MA", { pane: { id: "candle_pane" }, isStack: true });
+
+    // 从缓存恢复缩放
+    const savedBarSpace = localStorage.getItem("kline-bar-space");
+    if (savedBarSpace) {
+      chart.setBarSpace(Number(savedBarSpace));
+    }
+
+    // 监听缩放变化，保存到缓存
+    chart.subscribeAction("onZoom", () => {
+      const barSpace = chart.getBarSpace();
+      localStorage.setItem("kline-bar-space", String(barSpace.bar));
+    });
+
+    // 设置数据加载器（只设置一次）
     chart.setDataLoader({
-      getBars: async ({ callback }: { callback: (data: any[]) => void }) => {
-        try {
-          const res = await fetch(`/api/kline?symbol=${currentSymbol}&limit=120`, {
-            signal: abortControllerRef.current?.signal,
-          });
-
-          if (!res.ok) {
-            callback([]);
-            setLoading(false);
-            return;
-          }
-
-          const result = await res.json();
-          const klines: KLineChartData[] = result.klines;
-
-          // 检查是否是最新的 symbol
-          if (currentSymbolRef.current !== currentSymbol) {
-            return;
-          }
-
-          if (!klines || klines.length === 0) {
-            callback([]);
-            setLoading(false);
-            return;
-          }
-
-          const chartData = klines.map((item) => ({
-            timestamp: new Date(item.date).getTime(),
-            open: item.open,
-            high: item.high,
-            low: item.low,
-            close: item.close,
-            volume: item.amount,
-          }));
-
-          callback(chartData);
-          setLoading(false);
-
-          // 通知父组件K线数据已加载
-          onDataLoaded?.(currentSymbol);
-
-          // 数据加载完成后，容器从 hidden 变为可见，需要触发 resize
-          // 让 klinecharts 重新计算正确的尺寸
-          requestAnimationFrame(() => {
-            if (chartRef.current) {
-              chartRef.current.resize();
-            }
-          });
-        } catch (err) {
-          // AbortError 不处理
-          if (err instanceof Error && err.name === "AbortError") {
-            return;
-          }
-          console.error("K线数据加载失败", err);
+      getBars: async ({ callback }) => {
+        const targetSymbol = currentSymbolRef.current;
+        if (!targetSymbol) {
           callback([]);
-          setLoading(false);
+          return;
         }
+
+        // 取消之前的请求
+        if (abortControllerRef.current) {
+          abortControllerRef.current.abort();
+        }
+        abortControllerRef.current = new AbortController();
+
+        const res = await fetch(`/api/kline?symbol=${targetSymbol}&limit=120`, {
+          signal: abortControllerRef.current.signal,
+        });
+
+        if (!res.ok) {
+          callback([]);
+          return;
+        }
+
+        const result = await res.json();
+        const klines: KLineChartData[] = result.klines;
+
+        // 检查是否是最新的 symbol
+        if (currentSymbolRef.current !== targetSymbol) {
+          return;
+        }
+
+        if (!klines || klines.length === 0) {
+          callback([]);
+          return;
+        }
+
+        const chartData = klines.map((item) => ({
+          timestamp: new Date(item.date).getTime(),
+          open: item.open,
+          high: item.high,
+          low: item.low,
+          close: item.close,
+          volume: item.amount,
+        }));
+
+        callback(chartData);
+
+        onDataLoaded?.(targetSymbol);
+
+        requestAnimationFrame(() => {
+          if (chartRef.current) {
+            chartRef.current.resize();
+          }
+        });
       },
     });
 
@@ -152,18 +181,27 @@ export function KLineChart({ symbol, stockName, onDataLoaded }: KLineChartProps)
       if (chartRef.current) {
         chartRef.current = null;
       }
+      initializedRef.current = false;
       dispose(containerId);
     };
+  }, []);
+
+  // symbol 变化时：更新 symbol ref，通知图表重新加载数据
+  useEffect(() => {
+    if (!symbol || !initializedRef.current) return;
+    currentSymbolRef.current = symbol;
+
+    const chart = chartRef.current;
+    if (!chart) return;
+
+    // 更新 symbol 会触发 DataLoader.getBars 重新执行
+    chart.setSymbol({ ticker: stockName || symbol });
   }, [symbol, stockName]);
 
   return (
     <div className="flex flex-col h-full">
       <div className="flex-1 relative min-h-0">
-        {loading && (
-          <div className="absolute inset-0 z-10 flex items-center justify-center bg-white">
-            <Skeleton className="w-full h-full" />
-          </div>
-        )}
+
         <div
           ref={containerRef}
           className="w-full h-full"

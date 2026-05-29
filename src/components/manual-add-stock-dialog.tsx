@@ -61,10 +61,12 @@ export function ManualAddStockDialog({
       return;
     }
     setAddingCode(true);
-    await onAddStock(stockCodeInput, stockNameInput.trim());
-    setStockCodeInput("");
-    setStockNameInput("");
+    const ok = await onAddStock(stockCodeInput, stockNameInput.trim());
     setAddingCode(false);
+    if (ok) {
+      setStockCodeInput("");
+      setStockNameInput("");
+    }
   };
 
   const handleClose = () => {

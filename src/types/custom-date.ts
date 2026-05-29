@@ -17,6 +17,7 @@ export interface CustomDateStock {
   stockName: string;
   sortOrder: number; // 日期内个股排序
   remark: string; // 备注
+  stockNameColor: string; // 股票名称字体颜色
 }
 
 export interface CreateCustomDateRequest {

@@ -35,6 +35,7 @@ export interface DateStockItem {
   timePreview?: number[];
   hasPrice?: boolean;
   remark?: string;
+  nameColor?: string; // 股票名称字体颜色
 }
 
 interface DateStockGroupProps {
@@ -73,6 +74,8 @@ interface DateStockGroupProps {
   onDragEnd: () => void;
   /** 添加股票到日期 */
   onAddStock?: (stockCode: string, stockName: string) => Promise<boolean>;
+  /** 更新股票名称颜色 */
+  onUpdateStockColor?: (stockCode: string, color: string) => Promise<boolean>;
 }
 
 export function DateStockGroup({
@@ -95,6 +98,7 @@ export function DateStockGroup({
   onDragOver,
   onDragEnd,
   onAddStock,
+  onUpdateStockColor,
 }: DateStockGroupProps) {
   const isSelected = (code: string) => selectedCode === code && selectedDate === date;
 
@@ -102,6 +106,46 @@ export function DateStockGroup({
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   // 添加股票弹窗
   const [addStockOpen, setAddStockOpen] = useState(false);
+
+  // 右键菜单
+  const [contextMenu, setContextMenu] = useState<{
+    x: number;
+    y: number;
+    stockCode: string;
+    stockName: string;
+    currentColor: string;
+  } | null>(null);
+
+  // 可选的颜色列表
+  const colorOptions = [
+    { label: "默认", value: "" },
+    { label: "红色", value: "#dc2626" },
+    { label: "蓝色", value: "#2563eb" },
+    { label: "绿色", value: "#16a34a" },
+    { label: "紫色", value: "#9333ea" },
+    { label: "橙色", value: "#ea580c" },
+    { label: "粉色", value: "#db2777" },
+    { label: "青色", value: "#0891b2" },
+    { label: "灰色", value: "#6b7280" },
+  ];
+
+  const handleContextMenu = (e: React.MouseEvent, stock: DateStockItem) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setContextMenu({
+      x: e.clientX,
+      y: e.clientY,
+      stockCode: stock.code,
+      stockName: stock.name,
+      currentColor: stock.nameColor || "",
+    });
+  };
+
+  const handleColorSelect = async (color: string) => {
+    if (!contextMenu || !onUpdateStockColor) return;
+    setContextMenu(null);
+    await onUpdateStockColor(contextMenu.stockCode, color);
+  };
 
   const handleDeleteClick = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -176,6 +220,7 @@ export function DateStockGroup({
               }}
               onDragEnd={onDragEnd}
               onClick={() => onSelectStock(stock)}
+              onContextMenu={(e) => handleContextMenu(e, stock)}
               className={cn(
                 "w-[140px] shrink-0 flex items-stretch border hover:bg-orange-50/50 transition-colors text-xs cursor-pointer",
                 !stock.hasPrice && "border-dashed border-slate-200/60",
@@ -213,18 +258,17 @@ export function DateStockGroup({
                 <div className="flex items-center justify-between gap-1">
                   <span
                     className={cn(
-                      "font-medium truncate",
-                      isSelected(stock.code)
-                        ? "text-orange-700"
-                        : "text-slate-900"
+                      "font-bold truncate",
+                      stock.nameColor ? "" : "text-slate-900"
                     )}
+                    style={stock.nameColor ? { color: stock.nameColor } : undefined}
                   >
                     {stock.name}
                   </span>
                   {stock.hasPrice ? (
                     <span
                       className={cn(
-                        "font-mono text-[11px] shrink-0",
+                        "font-bold text-[11px] shrink-0",
                         stock.changeRate > 0
                           ? "text-red-600"
                           : stock.changeRate < 0
@@ -292,6 +336,47 @@ export function DateStockGroup({
           existingStockCodes={stocks.map((s) => s.code)}
           onAddStock={onAddStock}
         />
+      )}
+
+      {/* 右键菜单 - 修改股票名称颜色 */}
+      {contextMenu && (
+        <div
+          className="fixed inset-0 z-50"
+          onClick={() => setContextMenu(null)}
+          onContextMenu={(e) => {
+            e.preventDefault();
+            setContextMenu(null);
+          }}
+        >
+          <div
+            className="fixed bg-white border border-slate-200 rounded-lg shadow-lg py-1.5 z-50 min-w-[140px]"
+            style={{ left: contextMenu.x, top: contextMenu.y }}
+          >
+            <div className="px-3 py-1 text-xs text-slate-500 border-b border-slate-100 mb-1">
+              {contextMenu.stockName}
+            </div>
+            <div className="px-2 py-1">
+              <div className="grid grid-cols-3 gap-1">
+                {colorOptions.map((opt) => (
+                  <button
+                    key={opt.value}
+                    onClick={() => handleColorSelect(opt.value)}
+                    className={cn(
+                      "flex items-center gap-1 px-1.5 py-1 rounded text-[11px] hover:bg-slate-50 transition-colors w-full",
+                      contextMenu.currentColor === opt.value && "bg-orange-50 ring-1 ring-orange-200"
+                    )}
+                  >
+                    <span
+                      className="w-3 h-3 rounded-full border border-slate-200 shrink-0"
+                      style={opt.value ? { backgroundColor: opt.value } : { background: "linear-gradient(135deg, #f1f5f9 50%, #94a3b8 50%)" }}
+                    />
+                    <span className="text-slate-700 truncate">{opt.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
