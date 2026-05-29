@@ -182,7 +182,7 @@ export default function BlockDetailPage() {
       setSelectedStock({
         code: firstStock.code,
         name: firstStock.name,
-        marketType: firstStock.marketType,
+        marketType: firstStock.marketType ?? (firstStock.code.startsWith("6") ? "SH" : "SZ"),
         date: data[0].date,
         blockName: data[0].block.name,
       });
@@ -467,7 +467,7 @@ export default function BlockDetailPage() {
                                 setSelectedStock({
                                   code: stock.code,
                                   name: stock.name,
-                                  marketType: stock.marketType,
+                                  marketType: stock.marketType ?? (stock.code.startsWith("6") ? "SH" : "SZ"),
                                   date: dayData.date,
                                   blockName: dayData.block.name,
                                 });
@@ -550,7 +550,7 @@ export default function BlockDetailPage() {
                                     setSelectedStock({
                                       code: stock.code,
                                       name: stock.name,
-                                      marketType: stock.marketType,
+                                      marketType: stock.marketType ?? (stock.code.startsWith("6") ? "SH" : "SZ"),
                                       date: dayData.date,
                                       blockName: dayData.block.name,
                                     });

@@ -87,6 +87,9 @@ export default function MyPage() {
   const [fixingNames, setFixingNames] = useState(false);
   const [fixResult, setFixResult] = useState<string>("");
 
+  // 刷新市场行情
+  const [refreshingMarket, setRefreshingMarket] = useState(false);
+
   // 股票详情抽屉（lg以下）
   const [stockDetailOpen, setStockDetailOpen] = useState(false);
 
@@ -183,6 +186,61 @@ export default function MyPage() {
       setTimeout(() => setFixResult(""), 3000);
     } finally {
       setFixingNames(false);
+    }
+  };
+
+  // 刷新最近2个交易日的市场行情
+  const handleRefreshMarket = async () => {
+    setRefreshingMarket(true);
+    try {
+      const res = await fetch("/api/refresh-market", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ days: 2 }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        const updated = data.results.filter((r: any) => r.status === "updated").length;
+        const skipped = data.results.filter((r: any) => r.status === "skipped").length;
+        const failed = data.results.filter((r: any) => r.status === "failed").length;
+        toast.success(`刷新完成：更新 ${updated} 天，跳过 ${skipped} 天，失败 ${failed} 天`);
+        // 刷新当前自定义板块的历史行情
+        if (selectedBlock) {
+          const res = await fetch(`/api/custom-block-stocks/history?blockId=${selectedBlock.id}`);
+          if (res.ok) {
+            const result = await res.json();
+            const groups: HistoryDayGroup[] = result.data || [];
+            setHistoryData(groups);
+            if (groups.length > 0) {
+              const latestGroup = groups[0];
+              setBlockStocks(
+                latestGroup.stocks.map((s) => ({
+                  code: s.code,
+                  name: s.name,
+                  latest: s.latest,
+                  changeRate: s.changeRate,
+                  date: latestGroup.date,
+                  timePreview: s.timePreview,
+                  marketType: s.marketType,
+                  source: s.source,
+                  sourceBlockName: s.sourceBlockName,
+                }))
+              );
+              setStocksDate(latestGroup.date);
+            } else {
+              setBlockStocks([]);
+              setStocksDate(null);
+            }
+          }
+        }
+      } else {
+        toast.error("刷新失败：" + (data.error || "未知错误"));
+      }
+    } catch (error) {
+      console.error("刷新市场行情失败:", error);
+      toast.error("刷新失败：" + String(error));
+    } finally {
+      setRefreshingMarket(false);
     }
   };
 
@@ -499,12 +557,24 @@ export default function MyPage() {
                   <Button
                     variant="ghost"
                     size="sm"
+                    onClick={handleRefreshMarket}
+                    disabled={refreshingMarket}
+                    className="h-7 px-1.5 text-slate-400 hover:text-orange-600"
+                    title="刷新最近2个交易日市场行情"
+                  >
+                    <RefreshCw className={cn("w-3.5 h-3.5", refreshingMarket && "animate-spin")} />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
                     onClick={handleFixNames}
                     disabled={fixingNames}
                     className="h-7 px-1.5 text-slate-400 hover:text-orange-600"
                     title="修复股票名称乱码"
                   >
-                    <RefreshCw className={cn("w-3.5 h-3.5", fixingNames && "animate-spin")} />
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                    </svg>
                   </Button>
                 </div>
               )}

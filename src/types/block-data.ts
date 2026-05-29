@@ -60,10 +60,10 @@ export interface StockData {
   firstLimitUpTime: string;
   lastLimitUpTime: string;
   reasonType: string;
-  reasonInfo: string;
-  isNew: number;
-  isSt: number;
-  marketType: string;
+  reasonInfo?: string;
+  isNew?: number;
+  isSt?: number;
+  marketType?: string;
   timePreview?: number[];
 }
 

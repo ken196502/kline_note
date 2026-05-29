@@ -283,10 +283,10 @@ export function transformStockData(date: string, block: ApiBlock, stock: ApiStoc
     firstLimitUpTime: formatTime(stock.first_limit_up_time),
     lastLimitUpTime: formatTime(stock.last_limit_up_time),
     reasonType: stock.reason_type,
-    reasonInfo: stock.reason_info,
-    isNew: stock.is_new,
-    isSt: stock.is_st,
-    marketType: stock.market_type,
+    reasonInfo: "",
+    isNew: 0,
+    isSt: 0,
+    marketType: stock.code.startsWith("6") ? "SH" : "SZ",
     timePreview: (stock as any).time_preview as number[] | undefined,
   };
 }

@@ -68,12 +68,31 @@ export function isInTradingSession(): boolean {
   return timeInMinutes >= 565 && timeInMinutes <= 915;
 }
 
-// 获取最近N个交易日
-export function getRecentTradingDays(startFrom: string, count: number): string[] {
+// 获取最近N个交易日（从今天开始往前推）
+export function getRecentTradingDays(count: number): string[];
+// 获取最近N个交易日（从指定日期开始往前推）
+export function getRecentTradingDays(startFrom: string, count: number): string[];
+export function getRecentTradingDays(startOrCount: string | number, count?: number): string[] {
   const days: string[] = [];
-  let currentDate = startFrom;
+  let currentDate: string;
+  let actualCount: number;
   
-  for (let i = 0; i < count; i++) {
+  if (typeof startOrCount === "string" && typeof count === "number") {
+    currentDate = startOrCount;
+    actualCount = count;
+  } else if (typeof startOrCount === "number") {
+    currentDate = new Date().toISOString().split("T")[0];
+    actualCount = startOrCount;
+    
+    // 如果当前是节假日，先往前找最近的交易日
+    while (isHoliday(new Date(currentDate))) {
+      currentDate = getPrevTradingDay(currentDate);
+    }
+  } else {
+    return [];
+  }
+  
+  for (let i = 0; i < actualCount; i++) {
     days.push(currentDate);
     currentDate = getPrevTradingDay(currentDate);
   }
