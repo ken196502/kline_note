@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
-  fetchFromApi,
+  fetchLimitUpPoolFromApi,
   fetchAndUpsertTimePreview,
-  transformBlockData,
-  transformStockData,
 } from "@/lib/block-api";
+import { formatTime } from "@/lib/trading-day";
 import { getRecentTradingDays } from "@/lib/trading-day";
 import { getSupabaseClient } from "@/storage/database/supabase-client";
 
@@ -17,84 +16,63 @@ export async function POST(request: NextRequest) {
     const client = getSupabaseClient();
     const tradingDays = getRecentTradingDays(days); // 获取最近 N 个交易日
 
-    const results: { date: string; status: "updated" | "skipped" | "failed" }[] = [];
+    const results: { date: string; status: "updated" | "skipped" | "failed"; stocks?: number }[] = [];
 
     for (const currentDate of tradingDays) {
       try {
-        // 先检查数据库是否已有数据
-        const { data: existingBlocks, error: checkError } = await client
-          .from("block_limit_up")
+        // 先检查数据库是否已有股票数据
+        const { data: existingStocks, error: checkError } = await client
+          .from("stock_limit_up")
           .select("id")
           .eq("date", currentDate)
           .limit(1);
 
-        if (!checkError && existingBlocks && existingBlocks.length > 0) {
+        if (!checkError && existingStocks && existingStocks.length > 0) {
           // 已有数据，跳过（不强制刷新）
           results.push({ date: currentDate, status: "skipped" });
           continue;
         }
 
-        // 没有数据，从 API 获取
-        const apiData = await fetchFromApi(currentDate);
+        // 没有数据，从涨停池 API 获取
+        const apiData = await fetchLimitUpPoolFromApi(currentDate);
 
-        if (apiData.status_code === 0 && apiData.data) {
-          for (const block of apiData.data) {
-            const blockData = transformBlockData(currentDate, block);
+        if (apiData.status_code === 0 && apiData.data?.info) {
+          const stocks = apiData.data.info;
 
-            // 存入数据库
-            await client.from("block_limit_up").upsert(
+          // 保存所有股票数据
+          for (const stock of stocks) {
+            // 保存股票数据 - block_code 和 block_name 暂时用 unknown/其它，后续可以通过其他方式补充
+            await client.from("stock_limit_up").upsert(
               {
-                date: blockData.date,
-                code: blockData.code,
-                name: blockData.name,
-                change: blockData.change,
-                limit_up_num: blockData.limitUpNum,
-                continuous_plate_num: blockData.continuousPlateNum,
-                high: blockData.high,
-                high_num: blockData.highNum,
-                days: blockData.days,
+                date: currentDate,
+                block_code: "unknown",
+                block_name: "其它",
+                stock_code: stock.code,
+                stock_name: stock.name,
+                latest: stock.latest,
+                change_rate: stock.change_rate,
+                continue_num: Number.parseInt(stock.high_days || "0", 10),
+                high: stock.high_days || "",
+                high_days: Number.parseInt(stock.high_days || "0", 10),
+                first_limit_up_time: formatTime(stock.first_limit_up_time),
+                last_limit_up_time: formatTime(stock.last_limit_up_time),
+                reason_type: stock.reason_type || "",
+                time_preview: stock.time_preview ? JSON.stringify(stock.time_preview) : null,
               },
-              { onConflict: "date,code" }
+              { onConflict: "date,block_code,stock_code" }
             );
 
-            if (block.stock_list) {
-              for (const stock of block.stock_list) {
-                const stockData = transformStockData(currentDate, block, stock);
-
-                // 存入数据库
-                await client.from("stock_limit_up").upsert(
-                  {
-                    date: stockData.date,
-                    block_code: stockData.blockCode,
-                    block_name: stockData.blockName,
-                    stock_code: stockData.code,
-                    stock_name: stockData.name,
-                    latest: stockData.latest,
-                    change_rate: stockData.changeRate,
-                    continue_num: stockData.continueNum,
-                    high: stockData.high,
-                    high_days: stockData.highDays,
-                    first_limit_up_time: stockData.firstLimitUpTime,
-                    last_limit_up_time: stockData.lastLimitUpTime,
-                    reason_type: stockData.reasonType,
-                    time_preview: stockData.timePreview ? JSON.stringify(stockData.timePreview) : null,
-                  },
-                  { onConflict: "date,block_code,stock_code" }
-                );
-
-                // 同步写入 stock_daily_price 表
-                await client.from("stock_daily_price").upsert(
-                  {
-                    date: stockData.date,
-                    stock_code: stockData.code,
-                    stock_name: stockData.name,
-                    price: stockData.latest,
-                    change_rate: stockData.changeRate,
-                  },
-                  { onConflict: "date,stock_code" }
-                );
-              }
-            }
+            // 同步写入 stock_daily_price 表
+            await client.from("stock_daily_price").upsert(
+              {
+                date: currentDate,
+                stock_code: stock.code,
+                stock_name: stock.name,
+                price: stock.latest,
+                change_rate: stock.change_rate,
+              },
+              { onConflict: "date,stock_code" }
+            );
           }
 
           // 获取分时数据（不阻塞）
@@ -102,7 +80,11 @@ export async function POST(request: NextRequest) {
             console.error(`获取 ${currentDate} 分时数据失败:`, err);
           });
 
-          results.push({ date: currentDate, status: "updated" });
+          results.push({
+            date: currentDate,
+            status: "updated",
+            stocks: stocks.length,
+          });
         } else {
           results.push({ date: currentDate, status: "failed" });
         }
