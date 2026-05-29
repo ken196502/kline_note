@@ -267,26 +267,52 @@ export async function fetchAndUpsertTimePreview(date: string, forceRefresh: bool
   }
 }
 
-// 转换股票数据
-export function transformStockData(date: string, block: ApiBlock, stock: ApiStock) {
+// 转换股票数据（支持两种调用方式）
+export function transformStockData(
+  date: string,
+  blockOrCode: ApiBlock | string,
+  stockOrName: ApiStock | string,
+  stock?: ApiStock
+) {
+  let blockCode: string;
+  let blockName: string;
+  let targetStock: ApiStock;
+
+  if (typeof blockOrCode === "object" && blockOrCode !== null) {
+    // 方式一：(date, block, stock)
+    blockCode = blockOrCode.code;
+    blockName = blockOrCode.name;
+    targetStock = stockOrName as ApiStock;
+  } else if (stock !== undefined) {
+    // 方式二：(date, blockCode, blockName, stock)
+    blockCode = blockOrCode as string;
+    blockName = stockOrName as string;
+    targetStock = stock;
+  } else {
+    // 错误情况
+    blockCode = "unknown";
+    blockName = "其它";
+    targetStock = stockOrName as ApiStock;
+  }
+
   return {
     date,
-    blockCode: block.code,
-    blockName: block.name,
-    code: stock.code,
-    name: stock.name,
-    latest: stock.latest,
-    changeRate: stock.change_rate,
-    continueNum: stock.continue_num,
-    high: stock.high,
-    highDays: stock.high_days,
-    firstLimitUpTime: formatTime(stock.first_limit_up_time),
-    lastLimitUpTime: formatTime(stock.last_limit_up_time),
-    reasonType: stock.reason_type,
+    blockCode,
+    blockName,
+    code: targetStock.code,
+    name: targetStock.name,
+    latest: targetStock.latest,
+    changeRate: targetStock.change_rate,
+    continueNum: targetStock.continue_num,
+    high: targetStock.high,
+    highDays: targetStock.high_days,
+    firstLimitUpTime: formatTime(targetStock.first_limit_up_time),
+    lastLimitUpTime: formatTime(targetStock.last_limit_up_time),
+    reasonType: targetStock.reason_type,
     reasonInfo: "",
     isNew: 0,
     isSt: 0,
-    marketType: stock.code.startsWith("6") ? "SH" : "SZ",
-    timePreview: (stock as any).time_preview as number[] | undefined,
+    marketType: targetStock.code.startsWith("6") ? "SH" : "SZ",
+    timePreview: (targetStock as any).time_preview as number[] | undefined,
   };
 }

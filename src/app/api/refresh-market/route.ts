@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
+  fetchFromApi,
   fetchLimitUpPoolFromApi,
   fetchAndUpsertTimePreview,
+  transformBlockData,
+  transformStockData,
 } from "@/lib/block-api";
-import { formatTime } from "@/lib/trading-day";
 import { getRecentTradingDays } from "@/lib/trading-day";
 import { getSupabaseClient } from "@/storage/database/supabase-client";
 
@@ -16,51 +18,84 @@ export async function POST(request: NextRequest) {
     const client = getSupabaseClient();
     const tradingDays = getRecentTradingDays(days); // 获取最近 N 个交易日
 
-    const results: { date: string; status: "updated" | "skipped" | "failed"; stocks?: number }[] = [];
+    const results: { date: string; status: "updated" | "skipped" | "failed"; blocks?: number; stocks?: number }[] = [];
 
     for (const currentDate of tradingDays) {
       try {
-        // 先检查数据库是否已有股票数据
-        const { data: existingStocks, error: checkError } = await client
-          .from("stock_limit_up")
-          .select("id")
-          .eq("date", currentDate)
-          .limit(1);
+        // 第一步：检查板块数据是否存在
+        const { data: existingBlocks, error: checkBlockError } = await client
+          .from("block_limit_up")
+          .select("code, name")
+          .eq("date", currentDate);
 
-        if (!checkError && existingStocks && existingStocks.length > 0) {
-          // 已有数据，跳过（不强制刷新）
-          results.push({ date: currentDate, status: "skipped" });
-          continue;
+        // 第二步：板块数据不存在的话，先获取板块数据
+        let blocksToUse: Array<{ code: string; name: string }> = [];
+        if (checkBlockError || !existingBlocks || existingBlocks.length === 0) {
+          // 获取板块数据
+          const blockApiData = await fetchFromApi(currentDate);
+
+          if (blockApiData.status_code === 0 && blockApiData.data) {
+            blocksToUse = blockApiData.data.map((b) => ({
+              code: b.code,
+              name: b.name,
+            }));
+
+            // 保存板块数据
+            for (const block of blockApiData.data) {
+              const transformed = transformBlockData(currentDate, block);
+              await client.from("block_limit_up").upsert(transformed, {
+                onConflict: "date,code",
+              });
+            }
+          }
+        } else {
+          blocksToUse = existingBlocks;
         }
 
-        // 没有数据，从涨停池 API 获取
-        const apiData = await fetchLimitUpPoolFromApi(currentDate);
+        // 第三步：获取涨停池数据
+        const poolData = await fetchLimitUpPoolFromApi(currentDate);
 
-        if (apiData.status_code === 0 && apiData.data?.info) {
-          const stocks = apiData.data.info;
+        if (poolData.status_code === 0 && poolData.data?.info) {
+          const stocks = poolData.data.info;
 
-          // 保存所有股票数据
+          // 保存所有股票数据（使用板块数据关联）
+          let savedStocks = 0;
+
           for (const stock of stocks) {
-            // 保存股票数据 - block_code 和 block_name 暂时用 unknown/其它，后续可以通过其他方式补充
-            await client.from("stock_limit_up").upsert(
-              {
-                date: currentDate,
-                block_code: "unknown",
-                block_name: "其它",
-                stock_code: stock.code,
-                stock_name: stock.name,
-                latest: stock.latest,
-                change_rate: stock.change_rate,
-                continue_num: Number.parseInt(stock.high_days || "0", 10),
-                high: stock.high_days || "",
-                high_days: Number.parseInt(stock.high_days || "0", 10),
-                first_limit_up_time: formatTime(stock.first_limit_up_time),
-                last_limit_up_time: formatTime(stock.last_limit_up_time),
-                reason_type: stock.reason_type || "",
-                time_preview: stock.time_preview ? JSON.stringify(stock.time_preview) : null,
-              },
-              { onConflict: "date,block_code,stock_code" }
+            // 默认 unknown 板块
+            let blockCode = "unknown";
+            let blockName = "其它";
+
+            // 如果有 reason_type（板块标识），尝试匹配板块
+            if (stock.reason_type) {
+              // 先找完全匹配的板块名称
+              const matchedBlock = blocksToUse.find(
+                (b) => b.name === stock.reason_type
+              );
+              if (matchedBlock) {
+                blockCode = matchedBlock.code;
+                blockName = matchedBlock.name;
+              } else if (blocksToUse.length > 0) {
+                // 没有匹配到的话，随便用一个板块
+                blockCode = blocksToUse[0].code;
+                blockName = blocksToUse[0].name;
+              }
+            } else if (blocksToUse.length > 0) {
+              // 没有 reason_type 的话，随便用一个板块
+              blockCode = blocksToUse[0].code;
+              blockName = blocksToUse[0].name;
+            }
+
+            // 保存股票数据
+            const transformed = transformStockData(
+              currentDate,
+              blockCode,
+              blockName,
+              stock
             );
+            await client.from("stock_limit_up").upsert(transformed, {
+              onConflict: "date,block_code,stock_code",
+            });
 
             // 同步写入 stock_daily_price 表
             await client.from("stock_daily_price").upsert(
@@ -73,6 +108,8 @@ export async function POST(request: NextRequest) {
               },
               { onConflict: "date,stock_code" }
             );
+
+            savedStocks++;
           }
 
           // 获取分时数据（不阻塞）
@@ -83,7 +120,8 @@ export async function POST(request: NextRequest) {
           results.push({
             date: currentDate,
             status: "updated",
-            stocks: stocks.length,
+            blocks: blocksToUse.length,
+            stocks: savedStocks,
           });
         } else {
           results.push({ date: currentDate, status: "failed" });
