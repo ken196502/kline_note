@@ -1,4 +1,4 @@
-import { pgTable, index, uniqueIndex, serial, varchar, text, timestamp, integer, real } from "drizzle-orm/pg-core"
+import { pgTable, index, uniqueIndex, serial, varchar, text, timestamp, integer, real, date, foreignKey } from "drizzle-orm/pg-core"
 import { sql } from "drizzle-orm"
 
 
@@ -51,6 +51,7 @@ export const stockLimitUp = pgTable("stock_limit_up", {
 	firstLimitUpTime: varchar("first_limit_up_time", { length: 16 }).default(""),
 	lastLimitUpTime: varchar("last_limit_up_time", { length: 16 }).default(""),
 	reasonType: varchar("reason_type", { length: 256 }).default(""),
+	marketType: varchar("market_type", { length: 16 }).default(""),
 	timePreview: text("time_preview"),
 	fetchedAt: timestamp("fetched_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
 }, (table) => [
@@ -105,6 +106,11 @@ export const customBlockLinks = pgTable("custom_block_links", {
 }, (table) => [
 	uniqueIndex("custom_block_links_unique_idx").using("btree", table.customBlockId.asc().nullsLast().op("text_ops"), table.blockCode.asc().nullsLast().op("text_ops")),
 	index("custom_block_links_block_idx").using("btree", table.customBlockId.asc().nullsLast().op("text_ops")),
+	foreignKey({
+		name: "custom_block_links_custom_block_id_fkey",
+		columns: [table.customBlockId],
+		foreignColumns: [customBlocks.id],
+	}).onDelete("cascade"),
 ]);
 
 // 自定义板块手动添加的股票表
@@ -117,6 +123,51 @@ export const customBlockStocks = pgTable("custom_block_stocks", {
 }, (table) => [
 	uniqueIndex("custom_block_stocks_unique_idx").using("btree", table.customBlockId.asc().nullsLast().op("text_ops"), table.stockCode.asc().nullsLast().op("text_ops")),
 	index("custom_block_stocks_block_idx").using("btree", table.customBlockId.asc().nullsLast().op("text_ops")),
+	foreignKey({
+		name: "custom_block_stocks_custom_block_id_fkey",
+		columns: [table.customBlockId],
+		foreignColumns: [customBlocks.id],
+	}).onDelete("cascade"),
+]);
+
+// 自定义日期表
+export const customDates = pgTable("custom_dates", {
+	id: serial().primaryKey().notNull(),
+	username: varchar({ length: 64 }).notNull(),
+	date: date().notNull(),
+	customBlockId: integer("custom_block_id").notNull(),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+	uniqueIndex("custom_dates_unique_idx").using("btree", table.username.asc().nullsLast().op("text_ops"), table.customBlockId.asc().nullsLast().op("int4_ops"), table.date.asc().nullsLast().op("date_ops")),
+	index("custom_dates_block_idx").using("btree", table.customBlockId.asc().nullsLast().op("int4_ops")),
+	index("custom_dates_username_idx").using("btree", table.username.asc().nullsLast().op("text_ops")),
+	foreignKey({
+		name: "custom_dates_custom_block_id_fkey",
+		columns: [table.customBlockId],
+		foreignColumns: [customBlocks.id],
+	}).onDelete("cascade"),
+]);
+
+// 自定义日期内的股票表
+export const customDateStocks = pgTable("custom_date_stocks", {
+	id: serial().primaryKey().notNull(),
+	customDateId: integer("custom_date_id").notNull(),
+	stockCode: varchar("stock_code", { length: 32 }).notNull(),
+	stockName: varchar("stock_name", { length: 128 }).default("").notNull(),
+	sortOrder: integer("sort_order").default(0).notNull(),
+	remark: text().default("").notNull(),
+	stockNameColor: varchar("stock_name_color", { length: 32 }).default("").notNull(),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+	uniqueIndex("custom_date_stocks_unique_idx").using("btree", table.customDateId.asc().nullsLast().op("int4_ops"), table.stockCode.asc().nullsLast().op("text_ops")),
+	index("custom_date_stocks_date_idx").using("btree", table.customDateId.asc().nullsLast().op("int4_ops")),
+	index("custom_date_stocks_sort_idx").using("btree", table.customDateId.asc().nullsLast().op("int4_ops"), table.sortOrder.asc().nullsLast().op("int4_ops")),
+	foreignKey({
+		name: "custom_date_stocks_custom_date_id_fkey",
+		columns: [table.customDateId],
+		foreignColumns: [customDates.id],
+	}).onDelete("cascade"),
 ]);
 
 export const healthCheck = pgTable("health_check", {

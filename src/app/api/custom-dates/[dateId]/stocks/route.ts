@@ -54,7 +54,7 @@ export async function POST(
       stock_name: stockName || "",
       sort_order: maxOrder,
     })
-    .select("id, custom_date_id, stock_code, stock_name, sort_order, remark")
+    .select("id, custom_date_id, stock_code, stock_name, sort_order, remark, stock_name_color")
     .single();
 
   if (insertError) {
@@ -72,6 +72,7 @@ export async function POST(
       stockName: newStock.stock_name,
       sortOrder: newStock.sort_order,
       remark: newStock.remark || "",
+      stockNameColor: (newStock.stock_name_color as string) || "",
     },
   });
 }
@@ -165,6 +166,20 @@ export async function PUT(
     const { error } = await client
       .from("custom_date_stocks")
       .update({ remark: body.remark })
+      .eq("custom_date_id", Number(dateId))
+      .eq("stock_code", body.stockCode);
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+    return NextResponse.json({ success: true });
+  }
+
+  // 模式3：更新单条股票名称颜色
+  if (body.stockCode && body.stockNameColor !== undefined) {
+    const { error } = await client
+      .from("custom_date_stocks")
+      .update({ stock_name_color: body.stockNameColor })
       .eq("custom_date_id", Number(dateId))
       .eq("stock_code", body.stockCode);
 

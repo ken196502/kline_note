@@ -98,10 +98,12 @@ export function AddStockDialog({
       return;
     }
     setAddingCode(true);
-    await onAddStock(stockCodeInput, stockNameInput.trim());
-    setStockCodeInput("");
-    setStockNameInput("");
+    const ok = await onAddStock(stockCodeInput, stockNameInput.trim());
     setAddingCode(false);
+    if (ok) {
+      setStockCodeInput("");
+      setStockNameInput("");
+    }
   };
 
   const handleSearchAdd = async (code: string, name: string) => {

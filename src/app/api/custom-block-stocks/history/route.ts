@@ -13,6 +13,7 @@ interface StockDayData {
   timePreview?: number[];
   hasPrice: boolean;
   remark?: string;
+  nameColor?: string;
 }
 
 interface DayGroup {
@@ -76,7 +77,7 @@ export async function GET(request: NextRequest) {
   const dateIds = customDates.map((d: any) => d.id);
   const { data: dateStocks, error: stocksError } = await client
     .from("custom_date_stocks")
-    .select("id, custom_date_id, stock_code, stock_name, sort_order, remark")
+    .select("id, custom_date_id, stock_code, stock_name, sort_order, remark, stock_name_color")
     .in("custom_date_id", dateIds)
     .order("sort_order", { ascending: true });
 
@@ -85,7 +86,7 @@ export async function GET(request: NextRequest) {
   }
 
   // 构建 dateId -> stocks 映射
-  const stocksByDateId = new Map<number, { code: string; name: string; sortOrder: number; remark: string }[]>();
+  const stocksByDateId = new Map<number, { code: string; name: string; sortOrder: number; remark: string; nameColor: string }[]>();
   for (const s of dateStocks || []) {
     const dateId = s.custom_date_id as number;
     if (!stocksByDateId.has(dateId)) stocksByDateId.set(dateId, []);
@@ -94,6 +95,7 @@ export async function GET(request: NextRequest) {
       name: (s.stock_name as string) || "",
       sortOrder: s.sort_order as number,
       remark: (s.remark as string) || "",
+      nameColor: (s.stock_name_color as string) || "",
     });
   }
 
@@ -248,6 +250,7 @@ export async function GET(request: NextRequest) {
           timePreview: limitUpInfo.timePreview,
           hasPrice,
           remark: entry.remark,
+          nameColor: entry.nameColor,
         });
       } else {
         // 非涨停股：优先用 stock_daily_price 对应日期的价格，其次用最新交易日价格补充
@@ -262,6 +265,7 @@ export async function GET(request: NextRequest) {
           source: "nonLimitUp",
           hasPrice,
           remark: entry.remark,
+          nameColor: entry.nameColor,
         });
       }
     }

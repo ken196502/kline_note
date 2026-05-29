@@ -6,7 +6,6 @@ import {
   Plus,
   LogOut,
   RefreshCw,
-  X,
 } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import { zhCN } from "date-fns/locale";
@@ -21,14 +20,8 @@ import type { CustomBlock, CustomBlockStock } from "@/types/custom-block";
 import type { CustomDate } from "@/types/custom-date";
 import { EditDatePanel } from "@/components/edit-date-panel";
 import { StockDetailPanel, type StockDetailInfo } from "@/components/stock-detail-panel";
-import { DateStockGroup, type DateStockItem } from "@/components/date-stock-group";
-
-// 历史行情日期分组类型
-interface HistoryDayGroup {
-  date: string;
-  customDateId: number;
-  stocks: DateStockItem[];
-}
+import { BlockHistoryList, type HistoryDayGroup } from "@/components/block-history-list";
+import { toast } from "sonner";
 
 export default function MyPage() {
   const router = useRouter();
@@ -54,12 +47,10 @@ export default function MyPage() {
     removeStockFromDate,
     reorderStocks,
     updateRemark,
+    updateStockColor,
     fetchDates: refetchDates,
   } = useCustomDates(selectedBlock?.id ?? null);
 
-  // 添加日期相关状态
-  const [addingDate, setAddingDate] = useState(false);
-  const [newDateValue, setNewDateValue] = useState("");
   // 自定义板块的股票数据
   const [blockStocks, setBlockStocks] = useState<CustomBlockStock[]>([]);
   const [stocksDate, setStocksDate] = useState<string | null>(null);
@@ -229,16 +220,14 @@ export default function MyPage() {
   );
 
   // 添加自定义日期
-  const handleAddDate = async () => {
-    if (!newDateValue) return;
+  const handleAddDate = async (date: string) => {
+    if (!date) return;
     // 找到最近的已有股票列表的日期
     const recentDateWithStocks = [...customDates]
       .sort((a, b) => b.date.localeCompare(a.date))
       .find(d => d.stocks.length > 0);
-    const newDate = await createDate(newDateValue);
+    const newDate = await createDate(date);
     if (newDate) {
-      setAddingDate(false);
-      setNewDateValue("");
       if (recentDateWithStocks && recentDateWithStocks.stocks.length > 0) {
         // 按原顺序逐个复制股票到新日期
         const sortedStocks = [...recentDateWithStocks.stocks].sort((a, b) => a.sortOrder - b.sortOrder);
@@ -326,10 +315,10 @@ export default function MyPage() {
   };
 
   // 编辑日期面板回调
-  const handleAddStockToDate = async (stockCode: string, stockName: string) => {
+  const handleAddStockToDate = async (stockCode: string, stockName: string): Promise<boolean> => {
     if (!editingDate) return false;
-    const ok = await addStockToDate(editingDate.id, stockCode, stockName);
-    if (ok) {
+    const result = await addStockToDate(editingDate.id, stockCode, stockName);
+    if (result.success) {
       // 更新 editingDate 的本地 stocks
       setEditingDate((prev) => {
         if (!prev) return null;
@@ -344,6 +333,7 @@ export default function MyPage() {
               stockName,
               sortOrder: prev.stocks.length,
               remark: "",
+              stockNameColor: "",
             },
           ],
         };
@@ -351,8 +341,10 @@ export default function MyPage() {
       if (selectedBlock) {
         refreshStocks(selectedBlock.id);
       }
+    } else if (result.error) {
+      toast.error(result.error);
     }
-    return ok;
+    return result.success;
   };
 
   const handleRemoveStockFromDate = async (stockCode: string) => {
@@ -593,159 +585,72 @@ export default function MyPage() {
         </div>
 
         {/* 第二列 - 历史行情（按自定义日期分组） */}
-        <div className="flex-1 lg:min-w-[40%] lg:border-r lg:border-slate-200 bg-white overflow-y-auto relative">
-          {!selectedBlock ? (
-            <div className="flex items-center justify-center h-full text-sm text-slate-400">
-              请先选择或创建一个自定义板块
-            </div>
-          ) : (
-            <div className="p-3">
-              {/* 顶部：添加日期按钮 + 操作按钮 */}
-              <div className="flex items-center gap-1.5 -mt-1 mb-2 flex-wrap">
-                {/* 添加日期按钮 - 左上角 */}
-                {addingDate ? (
-                  <div className="flex items-center gap-1">
-                    <Input
-                      type="date"
-                      value={newDateValue}
-                      onChange={(e) => setNewDateValue(e.target.value)}
-                      className="h-6 text-xs w-[140px]"
-                      autoFocus
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") handleAddDate();
-                        if (e.key === "Escape") { setAddingDate(false); setNewDateValue(""); }
-                      }}
-                    />
-                    <Button
-                      size="sm"
-                      onClick={handleAddDate}
-                      disabled={!newDateValue}
-                      className="h-6 px-2 text-[11px]"
-                    >
-                      确定
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => { setAddingDate(false); setNewDateValue(""); }}
-                      className="h-6 px-1.5 text-slate-400"
-                    >
-                      <X className="w-3 h-3" />
-                    </Button>
-                  </div>
-                ) : (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setAddingDate(true)}
-                    className="h-6 px-2 text-[11px] text-slate-600"
-                  >
-                    <Plus className="w-3 h-3 mr-1" />
-                    添加日期
-                  </Button>
-                )}
-
-                <div className="flex-1" />
-
-                {/* 右侧操作按钮 - 始终显示 */}
-                <>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-6 px-2 text-[11px]"
-                    onClick={() => {
-                      setCollapsedDates(new Set(historyData.map((g) => g.date)));
-                    }}
-                  >
-                    折叠全部
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-6 px-2 text-[11px]"
-                    onClick={() => {
-                      setCollapsedDates(new Set());
-                    }}
-                  >
-                    打开全部
-                  </Button>
-
-                </>
-              </div>
-
-              {/* 按日期分组的历史行情 */}
-              {historyLoading ? (
-                <div className="space-y-4">
-                  {Array.from({ length: 3 }).map((_, i) => (
-                    <div key={i}>
-                      <Skeleton className="h-4 w-24 mb-2" />
-                      <div className="flex gap-2">
-                        {Array.from({ length: 4 }).map((_, j) => (
-                          <Skeleton key={j} className="h-8 w-16" />
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : historyData.length === 0 ? (
-                <div className="text-sm text-slate-400 text-center py-8">
-                  暂无数据，请点击左上角"添加日期"
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  {historyData
-                    .map((dayGroup) => dayGroup)
-                    .map((dayGroup) => (
-                      <DateStockGroup
-                        key={dayGroup.date}
-                        date={dayGroup.date}
-                        customDateId={dayGroup.customDateId}
-                        stocks={dayGroup.stocks}
-                        collapsed={collapsedDates.has(dayGroup.date)}
-                        selectedCode={selectedStock?.code ?? null}
-                        selectedDate={selectedStock?.date ?? null}
-                        draggingStock={draggingStock}
-                        dragOverStock={dragOverStock}
-                        dragDateId={dragDateId}
-                        formatDate={formatDate}
-                        customDates={customDates}
-                        onToggleCollapse={(d) => {
-                          setCollapsedDates((prev) => {
-                            const next = new Set(prev);
-                            if (next.has(d)) next.delete(d);
-                            else next.add(d);
-                            return next;
-                          });
-                        }}
-                        onEdit={(cd) => setEditingDate(cd)}
-                        onDelete={handleDeleteDate}
-                        onSelectStock={(stock) =>
-                          handleSelectStock({
-                            code: stock.code,
-                            name: stock.name,
-                            latest: stock.latest,
-                            changeRate: stock.changeRate,
-                            date: dayGroup.date,
-                            timePreview: stock.timePreview,
-                            marketType: stock.marketType,
-                            source: stock.source,
-                            sourceBlockName: stock.sourceBlockName,
-                          })
-                        }
-                        onDragStart={handleDragStart}
-                        onDragOver={handleDragOver}
-                        onDragEnd={handleDragEnd}
-                        onAddStock={dayGroup.customDateId ? async (stockCode: string, stockName: string) => {
-                          return addStockToDate(dayGroup.customDateId, stockCode, stockName);
-                        } : undefined}
-                      />
-                    ))}
-                </div>
-              )}
-
-            </div>
-          )}
-        </div>
+        <BlockHistoryList
+          selectedBlock={selectedBlock}
+          historyData={historyData}
+          historyLoading={historyLoading}
+          customDates={customDates}
+          selectedStockCode={selectedStock?.code ?? null}
+          selectedStockDate={selectedStock?.date ?? null}
+          draggingStock={draggingStock}
+          dragOverStock={dragOverStock}
+          dragDateId={dragDateId}
+          onAddDate={handleAddDate}
+          onDeleteDate={handleDeleteDate}
+          collapsedDates={collapsedDates}
+          onToggleCollapse={(d) => {
+            setCollapsedDates((prev) => {
+              const next = new Set(prev);
+              if (next.has(d)) next.delete(d);
+              else next.add(d);
+              return next;
+            });
+          }}
+          onCollapseAll={() => setCollapsedDates(new Set(historyData.map((g) => g.date)))}
+          onExpandAll={() => setCollapsedDates(new Set())}
+          onSelectStock={(stock, date) =>
+            handleSelectStock({
+              code: stock.code,
+              name: stock.name,
+              latest: stock.latest,
+              changeRate: stock.changeRate,
+              date,
+              timePreview: stock.timePreview,
+              marketType: stock.marketType,
+              source: stock.source,
+              sourceBlockName: stock.sourceBlockName,
+            })
+          }
+          onEditDate={(cd) => setEditingDate(cd)}
+          onDragStart={handleDragStart}
+          onDragOver={handleDragOver}
+          onDragEnd={handleDragEnd}
+          onAddStock={async (dateId, stockCode, stockName) => {
+            const result = await addStockToDate(dateId, stockCode, stockName);
+            if (!result.success && result.error) {
+              toast.error(result.error);
+            }
+            return result.success;
+          }}
+          onUpdateStockColor={async (dateId, stockCode, color) => {
+            const ok = await updateStockColor(dateId, stockCode, color);
+            if (ok) {
+              setHistoryData((prev) =>
+                prev.map((g) =>
+                  g.customDateId === dateId
+                    ? {
+                        ...g,
+                        stocks: g.stocks.map((s) =>
+                          s.code === stockCode ? { ...s, nameColor: color } : s
+                        ),
+                      }
+                    : g
+                )
+              );
+            }
+            return ok;
+          }}
+        />
 
         <StockDetailPanel
           selectedStock={selectedStock}
