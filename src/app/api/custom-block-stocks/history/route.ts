@@ -189,33 +189,6 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  // 查询 stock_daily_price 获取各日期的价格
-  const { data: dailyPrices } = await client
-    .from("stock_daily_price")
-    .select("date, stock_code, stock_name, price, change_rate")
-    .in("date", allDates)
-    .in("stock_code", uniqueStockCodes);
-
-  // 构建 date -> code -> price data 映射
-  const dailyPriceByDateAndCode = new Map<
-    string,
-    Map<string, { price: number; changeRate: number; name: string }>
-  >();
-
-  for (const dp of dailyPrices || []) {
-    const date = dp.date as string;
-    const code = dp.stock_code as string;
-
-    if (!dailyPriceByDateAndCode.has(date)) {
-      dailyPriceByDateAndCode.set(date, new Map());
-    }
-    dailyPriceByDateAndCode.get(date)!.set(code, {
-      price: dp.price as number,
-      changeRate: dp.change_rate as number,
-      name: (dp.stock_name as string) || "",
-    });
-  }
-
   // 组装返回数据（按 custom_date_stocks.sort_order 排序）
   const result: DayGroup[] = [];
 
@@ -225,55 +198,32 @@ export async function GET(request: NextRequest) {
     const dateStocksList = stocksByDateId.get(dateId) || [];
 
     const limitUpCodeMap = limitUpByDateAndCode.get(dateStr);
-    const dailyMap = dailyPriceByDateAndCode.get(dateStr);
-    const limitUpCodesForDate = new Set(limitUpCodeMap?.keys() || []);
-
-    // 先排涨停，再排非涨停，但都遵循 sort_order
-    const limitUpStocks: StockDayData[] = [];
-    const nonLimitUpStocks: StockDayData[] = [];
+    const stocks: StockDayData[] = [];
 
     for (const entry of dateStocksList) {
-      const dailyPrice = dailyMap?.get(entry.code);
       const limitUpInfo = limitUpCodeMap?.get(entry.code);
+      const latestDaily = latestDailyByCode.get(entry.code);
+      const hasPrice = latestDaily?.price != null && latestDaily.price > 0;
 
-      if (limitUpCodesForDate.has(entry.code) && limitUpInfo) {
-        // 涨停股：优先用 stock_daily_price 的价格，其次用 stock_limit_up 的
-        const hasPrice = dailyPrice?.price != null || limitUpInfo.latest != null;
-        limitUpStocks.push({
-          code: entry.code,
-          name: entry.name || dailyPrice?.name || entry.code,
-          latest: dailyPrice?.price ?? limitUpInfo.latest ?? 0,
-          changeRate: dailyPrice?.changeRate ?? limitUpInfo.changeRate ?? 0,
-          marketType: limitUpInfo.marketType || (entry.code.startsWith("6") ? "SH" : "SZ"),
-          source: "limitUp",
-          sourceBlockName: limitUpInfo.blockName,
-          timePreview: limitUpInfo.timePreview,
-          hasPrice,
-          remark: entry.remark,
-          nameColor: entry.nameColor,
-        });
-      } else {
-        // 非涨停股：优先用 stock_daily_price 对应日期的价格，其次用最新交易日价格补充
-        const latestDaily = latestDailyByCode.get(entry.code);
-        const hasPrice = dailyPrice?.price != null || (latestDaily?.price != null && latestDaily.price > 0);
-        nonLimitUpStocks.push({
-          code: entry.code,
-          name: entry.name || dailyPrice?.name || latestDaily?.name || entry.code,
-          latest: dailyPrice?.price ?? latestDaily?.price ?? 0,
-          changeRate: dailyPrice?.changeRate ?? latestDaily?.changeRate ?? 0,
-          marketType: entry.code.startsWith("6") ? "SH" : "SZ",
-          source: "nonLimitUp",
-          hasPrice,
-          remark: entry.remark,
-          nameColor: entry.nameColor,
-        });
-      }
+      stocks.push({
+        code: entry.code,
+        name: entry.name || latestDaily?.name || entry.code,
+        latest: latestDaily?.price ?? 0,
+        changeRate: latestDaily?.changeRate ?? 0,
+        marketType: limitUpInfo?.marketType || (entry.code.startsWith("6") ? "SH" : "SZ"),
+        source: limitUpInfo ? "limitUp" : "nonLimitUp",
+        sourceBlockName: limitUpInfo?.blockName,
+        timePreview: limitUpInfo?.timePreview,
+        hasPrice,
+        remark: entry.remark,
+        nameColor: entry.nameColor,
+      });
     }
 
     result.push({
       date: dateStr,
       customDateId: dateId,
-      stocks: [...limitUpStocks, ...nonLimitUpStocks],
+      stocks,
     });
   }
 

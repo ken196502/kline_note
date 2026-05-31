@@ -1,6 +1,70 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
-import { getSupabaseClient } from "@/storage/database/supabase-client";
+
+interface StockResult {
+  code: string;
+  name: string;
+}
+
+/** 新浪财经搜索（主），支持拼音/代码/名称 */
+async function searchSina(q: string): Promise<StockResult[]> {
+  const sinaUrl = `https://suggest3.sinajs.cn/suggest/type=11,13&key=${encodeURIComponent(q)}&name=suggestdata`;
+
+  const response = await fetch(sinaUrl, {
+    headers: { Referer: "https://finance.sina.com.cn" },
+  });
+
+  const text = await response.text();
+
+  const match = text.match(/var suggestdata="(.+)"/);
+  if (!match || !match[1]) return [];
+
+  const items = match[1].split(";").filter(Boolean);
+  const results: StockResult[] = [];
+
+  for (const item of items) {
+    const fields = item.split(",");
+    // 格式：带前缀代码,类型,纯数字代码,带前缀代码,名称,,名称,99,是否活跃,...
+    const fullCode = fields[0];
+    const pureCode = fields[2];
+    const name = fields[4];
+    const active = fields[8];
+
+    if (fullCode.startsWith("bj")) continue;
+    if (active === "0") continue;
+
+    if (pureCode && name) {
+      results.push({ code: pureCode, name });
+    }
+    if (results.length >= 50) break;
+  }
+
+  return results;
+}
+
+/** 东方财富搜索（fallback），支持拼音/代码/名称 */
+async function searchEastmoney(q: string): Promise<StockResult[]> {
+  const url = `https://searchapi.eastmoney.com/api/suggest/get?input=${encodeURIComponent(q)}&type=14&token=D43BF722C8E33BDC906FB84D85E326E8&count=20`;
+
+  const response = await fetch(url);
+  const data = await response.json();
+
+  const items = data?.QuotationCodeTable?.Data;
+  if (!Array.isArray(items)) return [];
+
+  const results: StockResult[] = [];
+
+  for (const item of items) {
+    // SecurityType: 1=沪A, 2=深A
+    if (item.SecurityType !== "1" && item.SecurityType !== "2") continue;
+    if (item.Code && item.Name) {
+      results.push({ code: item.Code, name: item.Name });
+    }
+    if (results.length >= 50) break;
+  }
+
+  return results;
+}
 
 export async function GET(request: Request) {
   const username = await getCurrentUser();
@@ -15,22 +79,14 @@ export async function GET(request: Request) {
     return NextResponse.json({ results: [] });
   }
 
-  const client = getSupabaseClient();
+  // 主：新浪财经搜索
+  const results = await searchSina(q);
 
-  // 通过 RPC 调用数据库函数，在 stock_limit_up 全表中 DISTINCT 搜索
-  const { data, error } = await client
-    .rpc("search_stocks", { search_query: q });
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  if (results.length > 0) {
+    return NextResponse.json({ results });
   }
 
-  const results: { code: string; name: string }[] = (data || []).map(
-    (row: { stock_code: string; stock_name: string }) => ({
-      code: row.stock_code,
-      name: row.stock_name,
-    })
-  );
-
-  return NextResponse.json({ results });
+  // fallback：东方财富搜索
+  const fallbackResults = await searchEastmoney(q);
+  return NextResponse.json({ results: fallbackResults });
 }

@@ -203,7 +203,7 @@ export function DateStockGroup({
 
       {/* 该日期下的股票列表 - 支持拖动排序 */}
       {!collapsed && (
-        <div className="flex flex-wrap gap-1.5">
+        <div className="flex flex-wrap gap-1">
           {stocks.map((stock) => (
             <div
               key={`${date}-${stock.code}`}
@@ -222,7 +222,7 @@ export function DateStockGroup({
               onClick={() => onSelectStock(stock)}
               onContextMenu={(e) => handleContextMenu(e, stock)}
               className={cn(
-                "w-[140px] shrink-0 flex items-stretch border hover:bg-orange-50/50 transition-colors text-xs cursor-pointer",
+                "w-[115px] h-8 shrink-0 flex items-stretch border hover:bg-orange-50/50 transition-colors text-xs cursor-pointer",
                 !stock.hasPrice && "border-dashed border-slate-200/60",
                 isSelected(stock.code) &&
                   "bg-orange-50/60 border-orange-200 border-solid",
@@ -255,10 +255,10 @@ export function DateStockGroup({
                 className="flex-1 flex flex-col justify-center px-1.5 py-1"
                 onClick={() => onSelectStock(stock)}
               >
-                <div className="flex items-center justify-between gap-1">
+                <div className="flex items-center">
                   <span
                     className={cn(
-                      "font-bold truncate",
+                      "truncate",
                       stock.nameColor ? "" : "text-slate-900"
                     )}
                     style={stock.nameColor ? { color: stock.nameColor } : undefined}
@@ -268,7 +268,7 @@ export function DateStockGroup({
                   {stock.hasPrice ? (
                     <span
                       className={cn(
-                        "font-bold text-[11px] shrink-0",
+                        "text-[11px] shrink-0",
                         stock.changeRate > 0
                           ? "text-red-600"
                           : stock.changeRate < 0
@@ -280,10 +280,10 @@ export function DateStockGroup({
                       {stock.changeRate.toFixed(2)}%
                     </span>
                   ) : (
-                    <span className="font-mono text-[11px] text-slate-300 shrink-0">--</span>
+                    <span className="font-mono text-[10px] text-slate-300 shrink-0">--</span>
                   )}
                 </div>
-                <div className="flex items-center justify-between gap-1">
+                {/* <div className="flex items-center justify-between gap-1">
                   <span className="text-[10px] text-slate-400 font-mono">
                     {stock.code}
                   </span>
@@ -294,7 +294,7 @@ export function DateStockGroup({
                   ) : (
                     <span className="font-mono text-[11px] text-slate-300 shrink-0">--</span>
                   )}
-                </div>
+                </div> */}
               </div>
             </div>
           ))}

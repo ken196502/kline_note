@@ -517,7 +517,7 @@ export default function MyPage() {
       {/* 三列布局 */}
       <div className="flex-1 flex overflow-hidden">
         {/* 第一列 - 自定义板块列表 */}
-        <div className="w-48 lg:w-56 shrink-0 border-r border-slate-200 bg-white flex flex-col">
+        <div className="w-26 shrink-0 border-r border-slate-200 bg-white flex flex-col">
           {/* 板块列表 */}
           <div className="flex-1 overflow-y-auto p-1">
             {/* 添加板块按钮 - 置顶 */}
@@ -552,7 +552,6 @@ export default function MyPage() {
                     className="flex-1 h-7 text-xs text-slate-500 hover:text-orange-600"
                   >
                     <Plus className="w-3.5 h-3.5 mr-1" />
-                    添加板块
                   </Button>
                   <Button
                     variant="ghost"
