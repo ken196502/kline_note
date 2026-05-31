@@ -13,6 +13,7 @@ function toCustomBlock(
     id: row.id as number,
     username: row.username as string,
     name: row.name as string,
+    sortOrder: (row.sort_order as number) ?? 0,
     linkedBlocks,
     manualStocks,
     createdAt: row.created_at as string,
@@ -33,7 +34,7 @@ export async function GET() {
     .from("custom_blocks")
     .select("*")
     .eq("username", username)
-    .order("created_at", { ascending: true });
+    .order("sort_order", { ascending: true });
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });

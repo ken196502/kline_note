@@ -101,8 +101,15 @@ export function KLineChart({ symbol, stockName, onDataLoaded }: KLineChartProps)
       },
     });
 
-    // 默认显示 MA 均线（叠加在蜡烛图上）
+    // 默认显示 MA 均线（叠加在蜡烛图上），隐藏 label 只保留曲线
     chart.createIndicator("MA", { pane: { id: "candle_pane" }, isStack: true });
+    chart.setStyles({
+      indicator: {
+        tooltip: {
+          showRule: "none",
+        },
+      },
+    });
 
     // 从缓存恢复缩放
     const savedBarSpace = localStorage.getItem("kline-bar-space");

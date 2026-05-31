@@ -32,6 +32,7 @@ export default function MyPage() {
     createBlock,
     deleteBlock,
     renameBlock,
+    reorderBlocks,
   } = useCustomBlocks();
 
   // 当前选中的自定义板块
@@ -78,6 +79,10 @@ export default function MyPage() {
   const [draggingStock, setDraggingStock] = useState<string | null>(null); // 正在拖动的 stockCode
   const [dragOverStock, setDragOverStock] = useState<string | null>(null); // 拖动经过的目标 stockCode
   const [dragDateId, setDragDateId] = useState<number | null>(null); // 当前拖动所在的日期
+
+  // 板块拖动排序状态
+  const [draggingBlockId, setDraggingBlockId] = useState<number | null>(null);
+  const [dragOverBlockId, setDragOverBlockId] = useState<number | null>(null);
 
   // 创建板块
   const [creatingBlock, setCreatingBlock] = useState(false);
@@ -432,6 +437,44 @@ export default function MyPage() {
     }
   };
 
+  // 板块拖动排序处理
+  const handleBlockDragStart = (blockId: number) => {
+    setDraggingBlockId(blockId);
+  };
+
+  const handleBlockDragOver = (e: React.DragEvent, blockId: number) => {
+    e.preventDefault();
+    if (draggingBlockId !== null && draggingBlockId !== blockId) {
+      setDragOverBlockId(blockId);
+    }
+  };
+
+  const handleBlockDragEnd = async () => {
+    if (draggingBlockId === null || dragOverBlockId === null) {
+      setDraggingBlockId(null);
+      setDragOverBlockId(null);
+      return;
+    }
+
+    const dragIndex = blocks.findIndex((b) => b.id === draggingBlockId);
+    const overIndex = blocks.findIndex((b) => b.id === dragOverBlockId);
+    if (dragIndex === -1 || overIndex === -1) {
+      setDraggingBlockId(null);
+      setDragOverBlockId(null);
+      return;
+    }
+
+    const newBlocks = [...blocks];
+    const [removed] = newBlocks.splice(dragIndex, 1);
+    newBlocks.splice(overIndex, 0, removed);
+
+    const orders = newBlocks.map((b, i) => ({ id: b.id, sortOrder: i }));
+    await reorderBlocks(orders);
+
+    setDraggingBlockId(null);
+    setDragOverBlockId(null);
+  };
+
   // 内联重命名处理
   const handleStartRename = (block: CustomBlock) => {
     setRenamingBlockId(block.id);
@@ -540,7 +583,7 @@ export default function MyPage() {
                     onClick={handleCreateBlock}
                     className="h-7 px-2 text-xs"
                   >
-                    确定
+                    OK
                   </Button>
                 </div>
               ) : (
@@ -595,16 +638,23 @@ export default function MyPage() {
               blocks.map((block) => (
                 <div
                   key={block.id}
+                  draggable={renamingBlockId !== block.id}
                   className={cn(
                     "group flex items-center justify-between px-2 py-1.5 rounded cursor-pointer transition-colors text-sm",
                     selectedBlock?.id === block.id
                       ? "bg-orange-50 text-orange-700 font-medium"
-                      : "hover:bg-slate-50 text-slate-700"
+                      : "hover:bg-slate-50 text-slate-700",
+                    draggingBlockId === block.id && "opacity-50",
+                    dragOverBlockId === block.id && "border-t-2 border-orange-400"
                   )}
                   onClick={() => {
                     if (renamingBlockId === block.id) return;
                     setSelectedBlock(block);
                   }}
+                  onDragStart={() => handleBlockDragStart(block.id)}
+                  onDragOver={(e) => handleBlockDragOver(e, block.id)}
+                  onDragEnd={handleBlockDragEnd}
+                  onDragLeave={() => setDragOverBlockId(null)}
                 >
                   {renamingBlockId === block.id ? (
                     <Input

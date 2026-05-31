@@ -222,7 +222,7 @@ export function DateStockGroup({
               onClick={() => onSelectStock(stock)}
               onContextMenu={(e) => handleContextMenu(e, stock)}
               className={cn(
-                "w-[115px] h-8 shrink-0 flex items-stretch border hover:bg-orange-50/50 transition-colors text-xs cursor-pointer",
+                "w-[120px] h-8 shrink-0 flex items-stretch border hover:bg-orange-50/50 transition-colors text-xs cursor-pointer",
                 !stock.hasPrice && "border-dashed border-slate-200/60",
                 isSelected(stock.code) &&
                   "bg-orange-50/60 border-orange-200 border-solid",

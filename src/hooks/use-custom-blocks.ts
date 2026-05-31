@@ -162,6 +162,34 @@ export function useCustomBlocks() {
     []
   );
 
+  // 批量更新板块排序
+  const reorderBlocks = useCallback(
+    async (orders: { id: number; sortOrder: number }[]): Promise<boolean> => {
+      const res = await fetch("/api/custom-blocks/reorder", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orders }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        setError(new Error(data.error || "排序更新失败"));
+        return false;
+      }
+      // 更新本地 blocks：按 sortOrder 重新排序
+      const orderMap = new Map(orders.map((o) => [o.id, o.sortOrder]));
+      setBlocks((prev) => {
+        const updated = prev.map((b) => {
+          const newOrder = orderMap.get(b.id);
+          return newOrder !== undefined ? { ...b, sortOrder: newOrder } : b;
+        });
+        updated.sort((a, b) => a.sortOrder - b.sortOrder);
+        return updated;
+      });
+      return true;
+    },
+    []
+  );
+
   // 获取自定义板块的股票数据
   const fetchBlockStocks = useCallback(
     async (blockId: number): Promise<{ stocks: CustomBlockStock[]; date: string | null }> => {
@@ -185,6 +213,7 @@ export function useCustomBlocks() {
     addStock,
     removeStock,
     renameBlock,
+    reorderBlocks,
     fetchBlockStocks,
   };
 }

@@ -180,7 +180,7 @@ export function StockDetailPanel({
     return (
       <div className="flex flex-col overflow-hidden flex-1 min-h-0">
         {/* K线图（上）填满剩余空间 */}
-        <div className={cn("overflow-hidden border-b border-slate-200", isSheet ? "h-[45%] shrink-0" : "flex-1 shrink-0")}>
+        <div className={cn("overflow-hidden border-b border-slate-200", isSheet ? "h-[50%] shrink-0" : "flex-1 shrink-0")}>
           <KLineChart symbol={selectedSymbol} stockName={selectedStock.name} onDataLoaded={onKLineLoaded} />
         </div>
 
@@ -247,7 +247,7 @@ export function StockDetailPanel({
         </div>
 
         {/* 分时缩略图（下）固定高度置底 */}
-        <div className={cn("shrink-0 flex items-center justify-center p-2 overflow-hidden", isSheet ? "h-[25%]" : "h-[30%]")}>
+        <div className={cn("shrink-0 flex items-center justify-center p-2 overflow-hidden", isSheet ? "h-[20%]" : "h-[25%]")}>
           <TimePreviewChartLarge
             data={onlineTimePreview}
             loading={timePreviewLoading}

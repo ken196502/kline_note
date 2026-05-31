@@ -4,6 +4,7 @@ export interface CustomBlock {
   id: number;
   username: string;
   name: string;
+  sortOrder: number;
   // 关联的板块列表（含名称）
   linkedBlocks: { code: string; name: string }[];
   // 手动添加的股票列表（含名称）

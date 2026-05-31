@@ -89,11 +89,13 @@ export const customBlocks = pgTable("custom_blocks", {
 	id: serial().primaryKey().notNull(),
 	username: varchar({ length: 64 }).notNull(),
 	name: varchar({ length: 128 }).notNull(),
+	sortOrder: integer("sort_order").default(0).notNull(),
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
 	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
 }, (table) => [
 	uniqueIndex("custom_blocks_unique_idx").using("btree", table.username.asc().nullsLast().op("text_ops"), table.name.asc().nullsLast().op("text_ops")),
 	index("custom_blocks_username_idx").using("btree", table.username.asc().nullsLast().op("text_ops")),
+	index("custom_blocks_sort_idx").using("btree", table.username.asc().nullsLast().op("text_ops"), table.sortOrder.asc().nullsLast().op("int4_ops")),
 ]);
 
 // 自定义板块关联的板块表

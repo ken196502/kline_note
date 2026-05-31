@@ -31,6 +31,7 @@ async function loadCustomBlock(
     id: row.id as number,
     username: row.username as string,
     name: row.name as string,
+    sortOrder: (row.sort_order as number) ?? 0,
     linkedBlocks: (links || []).map((l) => ({
       code: l.block_code as string,
       name: (l.block_name as string) || "",

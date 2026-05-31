@@ -44,7 +44,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen">
-      <div className={showTab ? "pb-12 md:pb-0 md:pl-16" : ""}>{children}</div>
+      <div className={showTab ? "pb-12 md:pb-0 md:pl-[2.8rem]" : ""}>{children}</div>
       {showTab && <TabBar />}
     </div>
   );

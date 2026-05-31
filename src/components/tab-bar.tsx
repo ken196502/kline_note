@@ -29,7 +29,7 @@ export function TabBar() {
   };
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-slate-200 safe-area-bottom md:top-0 md:bottom-0 md:right-auto md:w-16 md:border-t-0 md:border-r md:border-slate-200">
+    <nav className="fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-slate-200 safe-area-bottom md:top-0 md:bottom-0 md:right-auto md:w-[2.8rem] md:border-t-0 md:border-r md:border-slate-200">
       <div className="flex items-center justify-around h-12 md:flex-col md:justify-start md:gap-2 md:h-full md:pt-4">
         {tabs.map((tab) => {
           const Icon = tab.icon;
