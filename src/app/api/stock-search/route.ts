@@ -14,7 +14,10 @@ async function searchSina(q: string): Promise<StockResult[]> {
     headers: { Referer: "https://finance.sina.com.cn" },
   });
 
-  const text = await response.text();
+  // 新浪接口返回 GBK 编码，需要用 GBK 解码
+  const buffer = await response.arrayBuffer();
+  const decoder = new TextDecoder("gbk");
+  const text = decoder.decode(buffer);
 
   const match = text.match(/var suggestdata="(.+)"/);
   if (!match || !match[1]) return [];

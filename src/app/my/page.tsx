@@ -124,11 +124,8 @@ export default function MyPage() {
       return;
     }
     const loadHistory = async () => {
-      const isFirstLoad = historyData.length === 0;
-      if (isFirstLoad) {
-        setHistoryLoading(true);
-        setStocksLoading(true);
-      }
+      setHistoryLoading(true);
+      setStocksLoading(true);
       const res = await fetch(`/api/custom-block-stocks/history?blockId=${selectedBlock.id}`);
       if (res.ok) {
         const result = await res.json();
@@ -517,6 +514,7 @@ export default function MyPage() {
 
   // 选中股票查看详情
   const handleSelectStock = (stock: CustomBlockStock) => {
+    if (historyLoading) return;
     setSelectedStock({
       code: stock.code,
       name: stock.name,
@@ -638,17 +636,18 @@ export default function MyPage() {
               blocks.map((block) => (
                 <div
                   key={block.id}
-                  draggable={renamingBlockId !== block.id}
+                  draggable={renamingBlockId !== block.id && !historyLoading}
                   className={cn(
                     "group flex items-center justify-between px-2 py-1.5 rounded cursor-pointer transition-colors text-sm",
                     selectedBlock?.id === block.id
                       ? "bg-orange-50 text-orange-700 font-medium"
                       : "hover:bg-slate-50 text-slate-700",
                     draggingBlockId === block.id && "opacity-50",
-                    dragOverBlockId === block.id && "border-t-2 border-orange-400"
+                    dragOverBlockId === block.id && "border-t-2 border-orange-400",
+                    historyLoading && selectedBlock?.id !== block.id && "pointer-events-none opacity-50"
                   )}
                   onClick={() => {
-                    if (renamingBlockId === block.id) return;
+                    if (renamingBlockId === block.id || historyLoading) return;
                     setSelectedBlock(block);
                   }}
                   onDragStart={() => handleBlockDragStart(block.id)}
