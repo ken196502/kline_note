@@ -54,6 +54,15 @@ export function KLineChart({ symbol, stockName, onDataLoaded }: KLineChartProps)
 
     chartRef.current = chart;
     chart.setPeriod({ span: 1, type: "day" });
+    
+    // 设置格式化器，将数值显示为百分比
+    chart.setFormatter({
+      formatBigNumber: (value: string | number) => {
+        const num = typeof value === "string" ? parseFloat(value) : value;
+        return `${num.toFixed(2)}%`;
+      },
+    });
+    
     chart.setStyles({
       candle: {
         priceMark: {
@@ -82,7 +91,6 @@ export function KLineChart({ symbol, stockName, onDataLoaded }: KLineChartProps)
         tickLine: { color: "rgba(0, 0, 0, 0.1)" },
       },
       yAxis: {
-        type: "percentage",
         axisLine: { color: "rgba(0, 0, 0, 0.1)" },
         tickLine: { color: "rgba(0, 0, 0, 0.1)" },
       },
@@ -161,12 +169,14 @@ export function KLineChart({ symbol, stockName, onDataLoaded }: KLineChartProps)
           return;
         }
 
+        // 将价格转换为相对于第一个交易日收盘价的百分比变化
+        const basePrice = klines[0].close;
         const chartData = klines.map((item) => ({
           timestamp: new Date(item.date).getTime(),
-          open: item.open,
-          high: item.high,
-          low: item.low,
-          close: item.close,
+          open: (item.open / basePrice - 1) * 100,
+          high: (item.high / basePrice - 1) * 100,
+          low: (item.low / basePrice - 1) * 100,
+          close: (item.close / basePrice - 1) * 100,
           volume: item.amount,
         }));
 
