@@ -33,6 +33,7 @@
 │   ├── hooks/              # 自定义 Hooks
 │   │   ├── use-auth.ts     # 认证Hook
 │   │   ├── use-block-history.ts  # 板块历史数据Hook
+│   │   ├── use-block-history-cache.ts # 板块历史行情全局缓存Hook
 │   │   ├── use-block-detail.ts   # 板块详情Hook
 │   │   ├── use-custom-blocks.ts  # 自定义板块Hook
 │   │   └── use-notes.ts    # 备注Hook
@@ -143,6 +144,7 @@
 | `src/components/kline-chart.tsx` | K线图组件（基于 klinecharts） |
 | `src/components/stock-detail-panel.tsx` | 股票详情右侧面板组件（分时图+备注+K线图，复用于复盘页和板块详情页） |
 | `src/hooks/use-custom-blocks.ts` | 自定义板块 Hook（CRUD + linkBlock/unlinkBlock + addStock/removeStock） |
+| `src/hooks/use-block-history-cache.ts` | 板块历史行情全局缓存 Hook（预加载、缓存读取、失效管理，切换板块零延迟） |
 | `src/types/custom-block.ts` | 自定义板块类型定义（CustomBlock 含 linkedBlocks/manualStocks） |
 | `src/storage/database/shared/schema.ts` | Drizzle ORM 表定义（含 custom_blocks、custom_block_links、custom_block_stocks 表） |
 
@@ -187,6 +189,20 @@
 - 请求取消机制：切换股票时自动取消前一个请求
 - 容器可见时自动 resize 适配尺寸
 - 加载状态骨架屏
+
+### 板块历史行情缓存机制
+
+自定义板块页面切换板块时使用全局缓存（`useBlockHistoryCache`），避免重复请求，实现零延迟切换：
+
+- **全局缓存**：模块级 `Map<number, HistoryDayGroup[]>`，key 为板块 ID，value 为历史行情数据
+- **预加载时机**：
+  - 登录后 / 页面加载时 / 浏览器刷新后：并行预加载所有板块的历史行情
+  - 创建新板块后：预加载新板块数据
+- **切换板块**：优先从缓存读取，无缓存才发请求并写入缓存
+- **缓存更新**：
+  - `refreshStocks()`：始终更新缓存；若用户正在查看股票详情（`selectedStock !== null`），只更新 `historyData` 不替换 `blockStocks`，避免打断操作
+  - `handleRefreshMarket()`：清空缓存后重新预加载所有板块，再刷新当前显示
+  - 编辑日期面板操作（添加/删除股票、删除日期等）：通过 `refreshStocks` 自动同步缓存
 
 ### 分时数据刷新
 

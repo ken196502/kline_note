@@ -22,6 +22,7 @@ import { EditDatePanel } from "@/components/edit-date-panel";
 import { StockDetailPanel, type StockDetailInfo } from "@/components/stock-detail-panel";
 import { BlockHistoryList, type HistoryDayGroup } from "@/components/block-history-list";
 import { toast } from "sonner";
+import { useBlockHistoryCache } from "@/hooks/use-block-history-cache";
 
 export default function MyPage() {
   const router = useRouter();
@@ -34,6 +35,9 @@ export default function MyPage() {
     renameBlock,
     reorderBlocks,
   } = useCustomBlocks();
+
+  // 板块历史行情缓存
+  const blockCache = useBlockHistoryCache();
 
   // 当前选中的自定义板块
   const [selectedBlock, setSelectedBlock] = useState<CustomBlock | null>(null);
@@ -115,7 +119,14 @@ export default function MyPage() {
     }
   }, [blocks, selectedBlock]);
 
-  // 选中自定义板块时加载历史行情（基于自定义日期）
+  // 登录后/板块列表加载后，预加载所有板块的历史行情
+  useEffect(() => {
+    if (authenticated && blocks.length > 0) {
+      blockCache.prefetchAll(blocks.map((b) => b.id));
+    }
+  }, [authenticated, blocks]);
+
+  // 选中自定义板块时加载历史行情（优先从缓存读取）
   useEffect(() => {
     if (!selectedBlock) {
       setHistoryData([]);
@@ -123,6 +134,37 @@ export default function MyPage() {
       setStocksDate(null);
       return;
     }
+
+    // 优先从缓存读取
+    const cached = blockCache.getCached(selectedBlock.id);
+    if (cached) {
+      setHistoryData(cached);
+      if (cached.length > 0) {
+        const latestGroup = cached[0];
+        setBlockStocks(
+          latestGroup.stocks.map((s) => ({
+            code: s.code,
+            name: s.name,
+            latest: s.latest,
+            changeRate: s.changeRate,
+            date: latestGroup.date,
+            timePreview: s.timePreview,
+            marketType: s.marketType,
+            source: s.source,
+            sourceBlockName: s.sourceBlockName,
+          }))
+        );
+        setStocksDate(latestGroup.date);
+      } else {
+        setBlockStocks([]);
+        setStocksDate(null);
+      }
+      setHistoryLoading(false);
+      setStocksLoading(false);
+      return;
+    }
+
+    // 缓存中没有，发起请求
     const loadHistory = async () => {
       setHistoryLoading(true);
       setStocksLoading(true);
@@ -131,6 +173,8 @@ export default function MyPage() {
         const result = await res.json();
         const groups: HistoryDayGroup[] = result.data || [];
         setHistoryData(groups);
+        // 同时写入缓存
+        blockCache.updateCache(selectedBlock.id, groups);
         if (groups.length > 0) {
           const latestGroup = groups[0];
           setBlockStocks(
@@ -170,6 +214,8 @@ export default function MyPage() {
       setNewBlockName("");
       setCreatingBlock(false);
       setSelectedBlock(block);
+      // 预加载新板块的历史行情
+      blockCache.prefetchBlock(block.id);
     }
   };
 
@@ -206,34 +252,14 @@ export default function MyPage() {
         const skipped = data.results.filter((r: any) => r.status === "skipped").length;
         const failed = data.results.filter((r: any) => r.status === "failed").length;
         toast.success(`刷新完成：更新 ${updated} 天，跳过 ${skipped} 天，失败 ${failed} 天`);
-        // 刷新当前自定义板块的历史行情
+        // 清空缓存并重新预加载所有板块
+        blockCache.clearAll();
+        if (blocks.length > 0) {
+          blockCache.prefetchAll(blocks.map((b) => b.id));
+        }
+        // 刷新当前显示的板块
         if (selectedBlock) {
-          const res = await fetch(`/api/custom-block-stocks/history?blockId=${selectedBlock.id}`);
-          if (res.ok) {
-            const result = await res.json();
-            const groups: HistoryDayGroup[] = result.data || [];
-            setHistoryData(groups);
-            if (groups.length > 0) {
-              const latestGroup = groups[0];
-              setBlockStocks(
-                latestGroup.stocks.map((s) => ({
-                  code: s.code,
-                  name: s.name,
-                  latest: s.latest,
-                  changeRate: s.changeRate,
-                  date: latestGroup.date,
-                  timePreview: s.timePreview,
-                  marketType: s.marketType,
-                  source: s.source,
-                  sourceBlockName: s.sourceBlockName,
-                }))
-              );
-              setStocksDate(latestGroup.date);
-            } else {
-              setBlockStocks([]);
-              setStocksDate(null);
-            }
-          }
+          refreshStocks(selectedBlock.id);
         }
       } else {
         toast.error("刷新失败：" + (data.error || "未知错误"));
@@ -247,36 +273,48 @@ export default function MyPage() {
   };
 
   // 刷新历史行情数据（从服务器重新加载）
+  // 更新缓存，如果用户正在查看股票详情则不强行替换当前显示
   const refreshStocks = useCallback(
     async (blockId: number) => {
       const res = await fetch(`/api/custom-block-stocks/history?blockId=${blockId}`);
       if (res.ok) {
         const result = await res.json();
         const groups: HistoryDayGroup[] = result.data || [];
-        setHistoryData(groups);
-        if (groups.length > 0) {
-          const latestGroup = groups[0];
-          setBlockStocks(
-            latestGroup.stocks.map((s) => ({
-              code: s.code,
-              name: s.name,
-              latest: s.latest,
-              changeRate: s.changeRate,
-              date: latestGroup.date,
-              timePreview: s.timePreview,
-              marketType: s.marketType,
-              source: s.source,
-              sourceBlockName: s.sourceBlockName,
-            }))
-          );
-          setStocksDate(latestGroup.date);
-        } else {
-          setBlockStocks([]);
-          setStocksDate(null);
+        // 始终更新缓存
+        blockCache.updateCache(blockId, groups);
+        // 如果当前显示的正是这个板块，且用户没有正在查看股票详情，则更新显示
+        const isCurrentlyViewing = selectedBlock?.id === blockId;
+        const hasSelectedStock = selectedStock !== null;
+        if (isCurrentlyViewing && !hasSelectedStock) {
+          setHistoryData(groups);
+          if (groups.length > 0) {
+            const latestGroup = groups[0];
+            setBlockStocks(
+              latestGroup.stocks.map((s) => ({
+                code: s.code,
+                name: s.name,
+                latest: s.latest,
+                changeRate: s.changeRate,
+                date: latestGroup.date,
+                timePreview: s.timePreview,
+                marketType: s.marketType,
+                source: s.source,
+                sourceBlockName: s.sourceBlockName,
+              }))
+            );
+            setStocksDate(latestGroup.date);
+          } else {
+            setBlockStocks([]);
+            setStocksDate(null);
+          }
+        } else if (isCurrentlyViewing && hasSelectedStock) {
+          // 用户正在查看股票详情，只更新 historyData 但不改变 blockStocks
+          // 这样股票列表数据更新了，但不会打断用户当前查看的详情
+          setHistoryData(groups);
         }
       }
     },
-    []
+    [blockCache, selectedBlock?.id, selectedStock]
   );
 
   // 添加自定义日期
