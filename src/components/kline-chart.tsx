@@ -82,6 +82,7 @@ export function KLineChart({ symbol, stockName, onDataLoaded }: KLineChartProps)
         tickLine: { color: "rgba(0, 0, 0, 0.1)" },
       },
       yAxis: {
+        type: "percentage",
         axisLine: { color: "rgba(0, 0, 0, 0.1)" },
         tickLine: { color: "rgba(0, 0, 0, 0.1)" },
       },
