@@ -25,6 +25,8 @@ export function KLineChart({ symbol, stockName, onDataLoaded }: KLineChartProps)
   const abortControllerRef = useRef<AbortController | null>(null);
   const currentSymbolRef = useRef(symbol);
   const initializedRef = useRef(false);
+  const onDataLoadedRef = useRef(onDataLoaded);
+  onDataLoadedRef.current = onDataLoaded;
 
   // 初始化图表（只执行一次）
   useEffect(() => {
@@ -182,7 +184,7 @@ export function KLineChart({ symbol, stockName, onDataLoaded }: KLineChartProps)
 
         callback(chartData);
 
-        onDataLoaded?.(targetSymbol);
+        onDataLoadedRef.current?.(targetSymbol);
 
         requestAnimationFrame(() => {
           if (chartRef.current) {
