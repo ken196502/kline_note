@@ -18,6 +18,7 @@ interface KLineChartData {
   high: number;
   low: number;
   amount: number;
+  changeRate?: number;
 }
 
 interface KLineChartProps {
@@ -34,7 +35,6 @@ export function KLineChart({ symbol, stockName, onDataLoaded }: KLineChartProps)
   const initializedRef = useRef(false);
   const onDataLoadedRef = useRef(onDataLoaded);
   onDataLoadedRef.current = onDataLoaded;
-  const firstCloseRef = useRef<number | null>(null);
 
   // 初始化图表（只执行一次）
   useEffect(() => {
@@ -83,20 +83,16 @@ export function KLineChart({ symbol, stockName, onDataLoaded }: KLineChartProps)
             ): TooltipLegend[] => {
               const current = data.current;
               if (!current) return [];
-              const basePrice = firstCloseRef.current;
-              const changePercent =
-                basePrice && current.close != null
-                  ? ((current.close - basePrice) / basePrice) * 100
-                  : null;
+              const changePercent = current.changeRate as number | undefined;
               const isUp =
-                changePercent !== null ? changePercent >= 0 : true;
+                changePercent !== undefined ? changePercent >= 0 : true;
               const legends: TooltipLegend[] = [
                 { title: "开", value: `${current.open?.toFixed(2) ?? "—"}` },
                 { title: "高", value: `${current.high?.toFixed(2) ?? "—"}` },
                 { title: "低", value: `${current.low?.toFixed(2) ?? "—"}` },
                 { title: "收", value: `${current.close?.toFixed(2) ?? "—"}` },
               ];
-              if (changePercent !== null) {
+              if (changePercent !== undefined) {
                 legends.push({
                   title: "涨幅",
                   value: {
@@ -204,10 +200,7 @@ export function KLineChart({ symbol, stockName, onDataLoaded }: KLineChartProps)
           return;
         }
 
-        // 保存首日收盘价作为涨跌幅基准
-        firstCloseRef.current = klines[0].close;
-
-        // 直接使用原始价格数据
+        // 直接使用原始价格数据（前复权），同时携带涨跌幅
         const chartData = klines.map((item) => ({
           timestamp: new Date(item.date).getTime(),
           open: item.open,
@@ -215,6 +208,7 @@ export function KLineChart({ symbol, stockName, onDataLoaded }: KLineChartProps)
           low: item.low,
           close: item.close,
           volume: item.amount,
+          changeRate: item.changeRate ?? 0,
         }));
 
         callback(chartData);
