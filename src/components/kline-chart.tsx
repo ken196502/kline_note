@@ -2,6 +2,13 @@
 
 import { useEffect, useRef } from "react";
 import { init, dispose } from "klinecharts";
+import type {
+  KLineData,
+  Nullable,
+  NeighborData,
+  CandleStyle,
+  TooltipLegend,
+} from "klinecharts";
 
 
 interface KLineChartData {
@@ -27,6 +34,7 @@ export function KLineChart({ symbol, stockName, onDataLoaded }: KLineChartProps)
   const initializedRef = useRef(false);
   const onDataLoadedRef = useRef(onDataLoaded);
   onDataLoadedRef.current = onDataLoaded;
+  const firstCloseRef = useRef<number | null>(null);
 
   // 初始化图表（只执行一次）
   useEffect(() => {
@@ -57,14 +65,6 @@ export function KLineChart({ symbol, stockName, onDataLoaded }: KLineChartProps)
     chartRef.current = chart;
     chart.setPeriod({ span: 1, type: "day" });
     
-    // 设置格式化器，将数值显示为百分比
-    chart.setFormatter({
-      formatBigNumber: (value: string | number) => {
-        const num = typeof value === "string" ? parseFloat(value) : value;
-        return `${num.toFixed(2)}%`;
-      },
-    });
-    
     chart.setStyles({
       candle: {
         priceMark: {
@@ -72,8 +72,41 @@ export function KLineChart({ symbol, stockName, onDataLoaded }: KLineChartProps)
           low: { color: "#2DC08E" },
         },
         tooltip: {
+          showRule: "always",
           title: {
-            show: false,
+            show: true,
+          },
+          legend: {
+            template: (
+              data: NeighborData<Nullable<KLineData>>,
+              _styles: CandleStyle,
+            ): TooltipLegend[] => {
+              const current = data.current;
+              if (!current) return [];
+              const basePrice = firstCloseRef.current;
+              const changePercent =
+                basePrice && current.close != null
+                  ? ((current.close - basePrice) / basePrice) * 100
+                  : null;
+              const isUp =
+                changePercent !== null ? changePercent >= 0 : true;
+              const legends: TooltipLegend[] = [
+                { title: "开", value: `${current.open?.toFixed(2) ?? "—"}` },
+                { title: "高", value: `${current.high?.toFixed(2) ?? "—"}` },
+                { title: "低", value: `${current.low?.toFixed(2) ?? "—"}` },
+                { title: "收", value: `${current.close?.toFixed(2) ?? "—"}` },
+              ];
+              if (changePercent !== null) {
+                legends.push({
+                  title: "涨幅",
+                  value: {
+                    text: `${changePercent >= 0 ? "+" : ""}${changePercent.toFixed(2)}%`,
+                    color: isUp ? "#E94040" : "#2DC08E",
+                  },
+                });
+              }
+              return legends;
+            },
           },
         },
       },
@@ -171,14 +204,16 @@ export function KLineChart({ symbol, stockName, onDataLoaded }: KLineChartProps)
           return;
         }
 
-        // 将价格转换为相对于第一个交易日收盘价的百分比变化
-        const basePrice = klines[0].close;
+        // 保存首日收盘价作为涨跌幅基准
+        firstCloseRef.current = klines[0].close;
+
+        // 直接使用原始价格数据
         const chartData = klines.map((item) => ({
           timestamp: new Date(item.date).getTime(),
-          open: (item.open / basePrice - 1) * 100,
-          high: (item.high / basePrice - 1) * 100,
-          low: (item.low / basePrice - 1) * 100,
-          close: (item.close / basePrice - 1) * 100,
+          open: item.open,
+          high: item.high,
+          low: item.low,
+          close: item.close,
           volume: item.amount,
         }));
 
@@ -221,7 +256,6 @@ export function KLineChart({ symbol, stockName, onDataLoaded }: KLineChartProps)
   return (
     <div className="flex flex-col h-full">
       <div className="flex-1 relative min-h-0">
-
         <div
           ref={containerRef}
           className="w-full h-full"
