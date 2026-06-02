@@ -23,6 +23,9 @@ interface TencentMinuteResponse {
         date: string;
         prec: number;
       };
+      qt: {
+        [code: string]: unknown[];
+      };
     };
   };
 }
