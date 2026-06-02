@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseClient } from "@/storage/database/supabase-client";
 
-// ============ K线数据 API（支持多数据源） ============
+// ============ K线数据 API（支持多数据源：腾讯→新浪→东方财富） ============
 
 interface KLineData {
   date: string;
@@ -13,7 +13,71 @@ interface KLineData {
   changeRate?: number;
 }
 
-// 东方财富 API
+// 腾讯前复权K线 API
+// URL: https://web.ifzq.gtimg.cn/appstock/app/fqkline/get
+// 参数: _var=kline_dayqfq&param={code},day,,,{limit},qfq&r={random}
+// param格式: 股票代码,周期,起始日期,结束日期,数量,复权类型（起始/结束日期留空）
+// 返回格式: kline_dayqfq={"code":0,"data":{"sh600519":{"qfqday":[["日期","开盘","收盘","最高","最低","成交量"],...]}}}
+// qfqday 中每条数据顺序: 日期, 开盘价, 收盘价, 最高价, 最低价, 成交量(手)
+async function fetchFromTencent(
+  code: string,
+  market: "SH" | "SZ",
+  limit: number
+): Promise<KLineData[]> {
+  const fullCode = market === "SH" ? `sh${code}` : `sz${code}`;
+  const r = Math.random().toString().slice(2, 18);
+  const url = `https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?_var=kline_dayqfq&param=${fullCode},day,,,${limit},qfq&r=${r}`;
+
+  try {
+    const res = await fetch(url, {
+      headers: {
+        Referer: "https://gu.qq.com/",
+        "User-Agent": "Mozilla/5.0 Chrome/124.0.0.0 Safari/537.36",
+      },
+      signal: AbortSignal.timeout(5000),
+    });
+
+    if (!res.ok) return [];
+
+    const text = await res.text();
+    // 返回格式: kline_dayqfq={...json...}
+    const jsonMatch = text.match(/^kline_dayqfq\s*=\s*/);
+    if (!jsonMatch) return [];
+
+    const jsonStr = text.substring(jsonMatch[0].length);
+    const jsonObj = JSON.parse(jsonStr) as {
+      code: number;
+      data: Record<string, {
+        qfqday?: string[][];
+        day?: string[][];
+      }>;
+    };
+
+    if (jsonObj.code !== 0 || !jsonObj.data) return [];
+
+    const stockData = jsonObj.data[fullCode];
+    if (!stockData) return [];
+
+    // 优先使用前复权数据 qfqday，其次 day
+    const klines = stockData.qfqday || stockData.day;
+    if (!klines || klines.length === 0) return [];
+
+    // qfqday 格式: [日期, 开盘, 收盘, 最高, 最低, 成交量(手)]
+    // 腾讯API不直接返回涨跌幅，由上层通过相邻K线收盘价计算
+    return klines.map((item) => ({
+      date: item[0]!,
+      open: Number(item[1]),
+      close: Number(item[2]),
+      high: Number(item[3]),
+      low: Number(item[4]),
+      amount: Number(item[5]) * 100, // 成交量(手) → 股
+    }));
+  } catch {
+    return [];
+  }
+}
+
+// 东方财富 API（前复权 fqt=1）
 async function fetchFromEastMoney(
   code: string,
   market: "SH" | "SZ",
@@ -248,6 +312,8 @@ async function upsertRecentPrices(stockCode: string, klines: KLineData[]): Promi
   });
 }
 
+export const dynamic = "force-dynamic";
+
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl;
   const symbol = searchParams.get("symbol");
@@ -261,12 +327,41 @@ export async function GET(request: NextRequest) {
   const market: "SH" | "SZ" = symbol.startsWith("sh") ? "SH" : "SZ";
   const code = symbol.replace(/^(sh|sz)/, "");
 
-  // 尝试多个数据源
-  let klines = await fetchFromEastMoney(code, market, limit);
+  // 按优先级尝试多个数据源：腾讯 → 新浪 → 东方财富
+  let klines: KLineData[] = [];
+  let source = "none";
 
-  // 如果东方财富失败，尝试新浪
+  // 1. 腾讯前复权
+  klines = await fetchFromTencent(code, market, limit);
+  if (klines.length > 0) {
+    source = "tencent";
+  }
+
+  // 2. 新浪前复权
   if (klines.length === 0) {
     klines = await fetchFromSina(code, market, limit);
+    if (klines.length > 0) {
+      source = "sina";
+    }
+  }
+
+  // 3. 东方财富前复权
+  if (klines.length === 0) {
+    klines = await fetchFromEastMoney(code, market, limit);
+    if (klines.length > 0) {
+      source = "eastmoney";
+    }
+  }
+
+  // 前复权数据中涨跌幅需要通过相邻K线收盘价计算
+  for (let i = 0; i < klines.length; i++) {
+    if (klines[i].changeRate === undefined && i > 0) {
+      const prevClose = klines[i - 1].close;
+      if (prevClose > 0) {
+        klines[i].changeRate =
+          Math.round(((klines[i].close - prevClose) / prevClose) * 10000) / 100;
+      }
+    }
   }
 
   // 获取K线成功后，异步更新近一个月的价格到 stock_daily_price 表
@@ -280,6 +375,6 @@ export async function GET(request: NextRequest) {
     symbol,
     klines,
     count: klines.length,
-    source: klines.length > 0 ? "eastmoney" : "none",
+    source,
   });
 }
