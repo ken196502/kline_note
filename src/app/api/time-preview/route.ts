@@ -83,7 +83,12 @@ function convertToTencentCode(code: string, marketType?: string): string {
 /**
  * 从腾讯接口获取分时数据
  */
-async function getTencentMinute(code: string): Promise<MinuteItem[]> {
+interface TencentMinuteResult {
+  minutes: MinuteItem[];
+  prevClose: number;
+}
+
+async function getTencentMinute(code: string): Promise<TencentMinuteResult> {
   const url = `https://web.ifzq.gtimg.cn/appstock/app/minute/query?code=${code}`;
 
   const res = await fetch(url, {
@@ -98,22 +103,32 @@ async function getTencentMinute(code: string): Promise<MinuteItem[]> {
   }
 
   const json = (await res.json()) as TencentMinuteResponse;
+  const codeData = json.data?.[code];
 
   // 获取分时数据数组
-  const rawData = json.data?.[code]?.data?.data;
+  const rawData = codeData?.data?.data;
   if (!rawData || !Array.isArray(rawData)) {
-    return [];
+    return { minutes: [], prevClose: 0 };
   }
 
   // 解析数据格式: "时间 价格 成交量"
-  return rawData.map((line) => {
-    const [time, price, volume] = line.split(" ");
+  const minutes = rawData.map((line) => {
+    const parts = line.split(" ");
     return {
-      time,
-      price: Number(price),
-      volume: Number(volume),
+      time: parts[0]!,
+      price: Number(parts[1]),
+      volume: Number(parts[2]),
     };
   });
+
+  // 从 qt 字段获取昨收价：qt[code][4] 为昨收价
+  let prevClose = 0;
+  const qtData = codeData?.qt?.[code];
+  if (Array.isArray(qtData) && qtData.length > 4) {
+    prevClose = Number(qtData[4]) || 0;
+  }
+
+  return { minutes, prevClose };
 }
 
 /**
@@ -131,7 +146,7 @@ export async function GET(request: Request) {
 
   try {
     const tencentCode = convertToTencentCode(code, marketType || undefined);
-    const minuteData = await getTencentMinute(tencentCode);
+    const { minutes: minuteData, prevClose } = await getTencentMinute(tencentCode);
 
     // 创建时间到数据的映射
     const timeMap = new Map<string, MinuteItem>();
@@ -158,6 +173,7 @@ export async function GET(request: Request) {
       data: {
         minutes: filledMinutes,
         prices,
+        prevClose,
         totalPoints: TRADING_MINUTES,
         validPoints: validCount,
       },

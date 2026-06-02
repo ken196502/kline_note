@@ -35,25 +35,43 @@ export function TimePreviewChart({
       const validData = data.filter((v) => v !== null && !isNaN(v));
       if (validData.length === 0) return;
 
-      // 计算坐标点（基于实际数据长度，保持原始比例）
-      const minVal = Math.min(...validData);
-      const maxVal = Math.max(...validData);
-      // 修复：当所有值相同时（如一字涨停），range 为 0，需要给一个默认范围
+      // 数据是涨跌幅百分比，0 轴是 0%
+      const dataMin = Math.min(...validData);
+      const dataMax = Math.max(...validData);
+      // 将 0 纳入范围，确保 0 轴可见
+      const minVal = Math.min(dataMin, 0);
+      const maxVal = Math.max(dataMax, 0);
       const range = maxVal - minVal || 1;
 
       // 判断是否所有值都相同（一字涨停等情况）
-      const isFlatLine = maxVal === minVal;
+      const isFlatLine = dataMax === dataMin;
+
+      const padding = 2;
+      function valToY(val: number): number {
+        if (isFlatLine) return padding;
+        return height - padding - ((val - minVal) / range) * (height - padding * 2);
+      }
 
       const points = data.map((val, i) => ({
         x: (i / (data.length - 1)) * (width - 2),
         y:
           val !== null && !isNaN(val)
-            ? // 如果是平线，显示在顶部（涨停在上方）
-              isFlatLine
-              ? 4
-              : height - 2 - ((val - minVal) / range) * (height - 4)
+            ? valToY(val)
             : null,
       }));
+
+      // 绘制 0 轴（虚线）
+      if (minVal < 0 && maxVal > 0) {
+        const zeroY = valToY(0);
+        ctx.beginPath();
+        ctx.moveTo(1, zeroY);
+        ctx.lineTo(width - 1, zeroY);
+        ctx.strokeStyle = "rgba(0, 0, 0, 0.1)";
+        ctx.lineWidth = 0.5;
+        ctx.setLineDash([2, 2]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
 
       // 绘制填充区域（只绘制有效数据部分）
       ctx.beginPath();
@@ -72,10 +90,14 @@ export function TimePreviewChart({
         // 找到最后一个有效点
         const lastValidIndex = points.findLastIndex((p) => p.y !== null);
         const lastValidX = points[lastValidIndex]?.x || 0;
-        ctx.lineTo(lastValidX + 1, height - 2);
-        ctx.lineTo(points[0].x + 1, height - 2);
+        // 填充到 0 轴位置
+        const fillBaseY = valToY(0);
+        ctx.lineTo(lastValidX + 1, fillBaseY);
+        ctx.lineTo(points[0].x + 1, fillBaseY);
         ctx.closePath();
-        ctx.fillStyle = "rgba(251, 146, 60, 0.15)";
+        const lastVal = validData[validData.length - 1];
+        const isUp = lastVal >= 0;
+        ctx.fillStyle = isUp ? "rgba(233, 64, 64, 0.1)" : "rgba(45, 192, 142, 0.1)";
         ctx.fill();
       }
 
@@ -93,7 +115,9 @@ export function TimePreviewChart({
         }
       });
       if (lineStarted) {
-        ctx.strokeStyle = "#f97316";
+        const lastVal = validData[validData.length - 1];
+        const isUp = lastVal >= 0;
+        ctx.strokeStyle = isUp ? "#E94040" : "#2DC08E";
         ctx.lineWidth = 1.5;
         ctx.stroke();
       }
@@ -144,10 +168,13 @@ export function TimePreviewChart({
  */
 export function TimePreviewChartLarge({
   data,
+  prevClose,
   loading,
   onRefresh,
 }: {
   data: (number | null)[] | undefined;
+  /** 昨收价，用于绘制 0 轴（价格轴基准线） */
+  prevClose?: number;
   loading?: boolean;
   onRefresh?: () => void;
 }) {
@@ -173,12 +200,24 @@ export function TimePreviewChartLarge({
       );
       if (validData.length === 0) return;
 
-      const minVal = Math.min(...validData);
-      const maxVal = Math.max(...validData);
+      const dataMin = Math.min(...validData);
+      const dataMax = Math.max(...validData);
+
+      // 如果有昨收价，将昨收价纳入范围计算，确保 0 轴可见
+      const baseVal = prevClose && prevClose > 0 ? prevClose : dataMin;
+      const minVal = Math.min(dataMin, baseVal);
+      const maxVal = Math.max(dataMax, baseVal);
       const range = maxVal - minVal || 1;
 
       // 判断是否所有值都相同（一字涨停等情况）
-      const isFlatLine = maxVal === minVal;
+      const isFlatLine = dataMax === dataMin;
+
+      // 价格转 Y 坐标
+      const padding = 4;
+      function priceToY(price: number): number {
+        if (isFlatLine) return padding;
+        return height - padding - ((price - minVal) / range) * (height - padding * 2);
+      }
 
       // 计算坐标点（固定 240 个点的宽度）
       const totalPoints = data.length;
@@ -186,12 +225,22 @@ export function TimePreviewChartLarge({
         x: (i / (totalPoints - 1)) * (width - 8) + 4,
         y:
           val !== null && !isNaN(val)
-            ? // 如果是平线，显示在顶部（涨停在上方）
-              isFlatLine
-              ? 4
-              : height - 4 - ((val - minVal) / range) * (height - 8)
+            ? priceToY(val)
             : null,
       }));
+
+      // 绘制 0 轴（昨收价基准线）
+      if (prevClose && prevClose > 0) {
+        const zeroY = priceToY(prevClose);
+        ctx.beginPath();
+        ctx.moveTo(4, zeroY);
+        ctx.lineTo(width - 4, zeroY);
+        ctx.strokeStyle = "rgba(0, 0, 0, 0.12)";
+        ctx.lineWidth = 1;
+        ctx.setLineDash([4, 4]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
 
       // 填充（只绘制有效数据部分）
       ctx.beginPath();
@@ -209,10 +258,15 @@ export function TimePreviewChartLarge({
       if (started) {
         const lastValidIndex = points.findLastIndex((p) => p.y !== null);
         const lastValidX = points[lastValidIndex]?.x || 0;
-        ctx.lineTo(lastValidX, height - 4);
-        ctx.lineTo(points[0].x, height - 4);
+        // 填充区域：线条到 0 轴之间
+        const fillBaseY = prevClose && prevClose > 0 ? priceToY(prevClose) : height - padding;
+        ctx.lineTo(lastValidX, fillBaseY);
+        ctx.lineTo(points[0].x, fillBaseY);
         ctx.closePath();
-        ctx.fillStyle = "rgba(251, 146, 60, 0.12)";
+        // 根据涨跌决定填充颜色
+        const lastPrice = validData[validData.length - 1];
+        const isUp = lastPrice !== undefined && prevClose ? lastPrice >= prevClose : true;
+        ctx.fillStyle = isUp ? "rgba(233, 64, 64, 0.08)" : "rgba(45, 192, 142, 0.08)";
         ctx.fill();
       }
 
@@ -230,7 +284,9 @@ export function TimePreviewChartLarge({
         }
       });
       if (lineStarted) {
-        ctx.strokeStyle = "#f97316";
+        const lastPrice = validData[validData.length - 1];
+        const isUp = lastPrice !== undefined && prevClose ? lastPrice >= prevClose : true;
+        ctx.strokeStyle = isUp ? "#E94040" : "#2DC08E";
         ctx.lineWidth = 2;
         ctx.stroke();
       }
@@ -256,22 +312,12 @@ export function TimePreviewChartLarge({
       // 绘制当前进度线（如果数据未满 240 个有效点）
       const validCount = validData.length;
       if (validCount < totalPoints && validCount > 0) {
-        const lastValidX = points[points.findIndex((p, i) => {
-          // 找到最后一个有效点的索引
-          let lastIdx = -1;
-          for (let j = i; j >= 0; j--) {
-            if (points[j].y !== null) {
-              lastIdx = j;
-              break;
-            }
-          }
-          return lastIdx === i;
-        })]?.x;
+        const lastValidX = points[points.findLastIndex((p) => p.y !== null)]?.x;
 
         if (lastValidX) {
           ctx.beginPath();
-          ctx.moveTo(lastValidX, 4);
-          ctx.lineTo(lastValidX, height - 4);
+          ctx.moveTo(lastValidX, padding);
+          ctx.lineTo(lastValidX, height - padding);
           ctx.strokeStyle = "rgba(249, 115, 22, 0.3)";
           ctx.lineWidth = 1;
           ctx.setLineDash([4, 4]);
@@ -280,7 +326,7 @@ export function TimePreviewChartLarge({
         }
       }
     },
-    [data]
+    [data, prevClose]
   );
 
   if (loading) {

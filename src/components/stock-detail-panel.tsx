@@ -74,6 +74,7 @@ export function StockDetailPanel({
 }: StockDetailPanelProps) {
   // 在线分时数据状态
   const [onlineTimePreview, setOnlineTimePreview] = useState<number[]>([]);
+  const [onlinePrevClose, setOnlinePrevClose] = useState<number>(0);
   const [timePreviewLoading, setTimePreviewLoading] = useState(false);
   const timePreviewAbortControllerRef = useRef<AbortController | null>(null);
 
@@ -106,6 +107,7 @@ export function StockDetailPanel({
       const result = await res.json();
       if (result.success && result.data?.prices) {
         setOnlineTimePreview(result.data.prices);
+        setOnlinePrevClose(result.data.prevClose || 0);
       }
       setTimePreviewLoading(false);
     },
@@ -125,6 +127,7 @@ export function StockDetailPanel({
       fetchOnlineTimePreview(selectedStock.code, selectedStock.marketType);
     } else {
       setOnlineTimePreview([]);
+      setOnlinePrevClose(0);
     }
     setEditingNote(false);
 
@@ -250,6 +253,7 @@ export function StockDetailPanel({
         <div className={cn("shrink-0 flex items-center justify-center p-2 overflow-hidden", isSheet ? "h-[20%]" : "h-[25%]")}>
           <TimePreviewChartLarge
             data={onlineTimePreview}
+            prevClose={onlinePrevClose}
             loading={timePreviewLoading}
             onRefresh={() =>
               fetchOnlineTimePreview(selectedStock.code, selectedStock.marketType)
