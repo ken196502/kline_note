@@ -76,6 +76,8 @@ interface DateStockGroupProps {
   onAddStock?: (stockCode: string, stockName: string) => Promise<boolean>;
   /** 更新股票名称颜色 */
   onUpdateStockColor?: (stockCode: string, color: string) => Promise<boolean>;
+  /** 添加股票弹窗关闭后刷新数据 */
+  onStocksChanged?: () => void;
 }
 
 export function DateStockGroup({
@@ -99,6 +101,7 @@ export function DateStockGroup({
   onDragEnd,
   onAddStock,
   onUpdateStockColor,
+  onStocksChanged,
 }: DateStockGroupProps) {
   const isSelected = (code: string) => selectedCode === code && selectedDate === date;
 
@@ -332,7 +335,10 @@ export function DateStockGroup({
       {onAddStock && (
         <AddStockDialog
           open={addStockOpen}
-          onOpenChange={setAddStockOpen}
+          onOpenChange={(nextOpen) => {
+            setAddStockOpen(nextOpen);
+            if (!nextOpen) onStocksChanged?.();
+          }}
           existingStockCodes={stocks.map((s) => s.code)}
           onAddStock={onAddStock}
         />

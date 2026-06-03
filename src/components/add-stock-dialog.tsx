@@ -47,7 +47,13 @@ export function AddStockDialog({
   const [searchLoading, setSearchLoading] = useState(false);
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const existingSet = useMemo(() => new Set(existingStockCodes), [existingStockCodes]);
+  // 本轮已成功添加的股票代码（用于置灰按钮）
+  const [addedCodes, setAddedCodes] = useState<Set<string>>(new Set());
+
+  const existingSet = useMemo(
+    () => new Set([...existingStockCodes, ...addedCodes]),
+    [existingStockCodes, addedCodes]
+  );
 
   // 输入满6位代码时自动查询名称
   useEffect(() => {
@@ -92,7 +98,7 @@ export function AddStockDialog({
 
   const handleManualAdd = async () => {
     if (!stockCodeInput.trim() || stockCodeInput.length !== 6) return;
-    if (existingStockCodes.includes(stockCodeInput)) {
+    if (existingSet.has(stockCodeInput)) {
       setStockCodeInput("");
       setStockNameInput("");
       return;
@@ -101,22 +107,29 @@ export function AddStockDialog({
     const ok = await onAddStock(stockCodeInput, stockNameInput.trim());
     setAddingCode(false);
     if (ok) {
+      setAddedCodes((prev) => new Set(prev).add(stockCodeInput));
       setStockCodeInput("");
       setStockNameInput("");
     }
   };
 
   const handleSearchAdd = async (code: string, name: string) => {
-    if (existingStockCodes.includes(code)) return;
-    await onAddStock(code, name);
+    if (existingSet.has(code)) return;
+    const ok = await onAddStock(code, name);
+    if (ok) {
+      setAddedCodes((prev) => new Set(prev).add(code));
+    }
   };
 
-  const handleClose = () => {
-    setStockCodeInput("");
-    setStockNameInput("");
-    setSearchQuery("");
-    setSearchResults([]);
-    onOpenChange(false);
+  const handleClose = (nextOpen: boolean) => {
+    if (!nextOpen) {
+      setStockCodeInput("");
+      setStockNameInput("");
+      setSearchQuery("");
+      setSearchResults([]);
+      setAddedCodes(new Set());
+    }
+    onOpenChange(nextOpen);
   };
 
   return (

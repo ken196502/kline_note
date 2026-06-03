@@ -67,6 +67,9 @@ interface BlockHistoryListProps {
 
   // 更新股票颜色
   onUpdateStockColor: (dateId: number, stockCode: string, color: string) => Promise<boolean>;
+
+  // 添加股票弹窗关闭后刷新数据
+  onStocksChanged?: () => void;
 }
 
 export function BlockHistoryList({
@@ -92,6 +95,7 @@ export function BlockHistoryList({
   onDragEnd,
   onAddStock,
   onUpdateStockColor,
+  onStocksChanged,
 }: BlockHistoryListProps) {
   // 添加日期相关本地状态
   const [addingDate, setAddingDate] = useState(false);
@@ -241,6 +245,7 @@ export function BlockHistoryList({
                   onUpdateStockColor={dayGroup.customDateId ? async (stockCode: string, color: string) => {
                     return onUpdateStockColor(dayGroup.customDateId, stockCode, color);
                   } : undefined}
+                  onStocksChanged={onStocksChanged}
                 />
               ))}
           </div>

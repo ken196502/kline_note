@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import {
   Plus,
@@ -23,6 +23,7 @@ import { StockDetailPanel, type StockDetailInfo } from "@/components/stock-detai
 import { BlockHistoryList, type HistoryDayGroup } from "@/components/block-history-list";
 import { toast } from "sonner";
 import { useBlockHistoryCache } from "@/hooks/use-block-history-cache";
+import { useStockKlinePoller } from "@/hooks/use-stock-kline-poller";
 
 export default function MyPage() {
   const router = useRouter();
@@ -539,18 +540,14 @@ export default function MyPage() {
     setRenamingBlockId(null);
   };
 
-  // K线数据加载完成后，延迟刷新历史行情（等待服务端异步写入stock_daily_price）
-  const handleKLineLoaded = useCallback(
-    (_symbol: string) => {
-      if (!selectedBlock) return;
-      setTimeout(() => {
-        refreshStocks(selectedBlock.id);
-      }, 1000);
-    },
-    [selectedBlock, refreshStocks]
-  );
+  // 不间断轮询：自动遍历当前板块所有股票更新日K行情
+  const { prioritizeStock } = useStockKlinePoller({
+    blockId: selectedBlock?.id ?? null,
+    historyData,
+    onRefreshHistory: refreshStocks,
+  });
 
-  // 选中股票查看详情
+  // 选中股票查看详情，同时优先更新该股票的日K行情
   const handleSelectStock = (stock: CustomBlockStock) => {
     if (historyLoading) return;
     setSelectedStock({
@@ -560,6 +557,8 @@ export default function MyPage() {
       date: stock.date || stocksDate || "",
       blockName: stock.sourceBlockName || stock.name,
     });
+    // 将该股票提到轮询队列的优先位置
+    prioritizeStock(stock.code);
     if (window.innerWidth < 1024) {
       setStockDetailOpen(true);
     }
@@ -806,6 +805,9 @@ export default function MyPage() {
             }
             return ok;
           }}
+          onStocksChanged={() => {
+            if (selectedBlock) refreshStocks(selectedBlock.id);
+          }}
         />
 
         <StockDetailPanel
@@ -843,7 +845,7 @@ export default function MyPage() {
           stockDetailOpen={stockDetailOpen}
           setStockDetailOpen={setStockDetailOpen}
           openNoteRequest={openNoteRequest}
-          onKLineLoaded={handleKLineLoaded}
+          onKLineLoaded={undefined}
         />
       </div>
     </div>

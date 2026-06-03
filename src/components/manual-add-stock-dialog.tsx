@@ -33,6 +33,9 @@ export function ManualAddStockDialog({
   const [autoNameLoading, setAutoNameLoading] = useState(false);
   const lastFetchedCode = useRef<string>("");
 
+  // 本轮已成功添加的股票代码（用于置灰按钮）
+  const [addedCodes, setAddedCodes] = useState<Set<string>>(new Set());
+
   // 输入满6位代码时自动查询名称
   useEffect(() => {
     if (stockCodeInput.length === 6 && stockCodeInput !== lastFetchedCode.current) {
@@ -55,7 +58,7 @@ export function ManualAddStockDialog({
 
   const handleManualAdd = async () => {
     if (!stockCodeInput.trim() || stockCodeInput.length !== 6) return;
-    if (existingStockCodes.includes(stockCodeInput)) {
+    if (existingStockCodes.includes(stockCodeInput) || addedCodes.has(stockCodeInput)) {
       setStockCodeInput("");
       setStockNameInput("");
       return;
@@ -64,15 +67,19 @@ export function ManualAddStockDialog({
     const ok = await onAddStock(stockCodeInput, stockNameInput.trim());
     setAddingCode(false);
     if (ok) {
+      setAddedCodes((prev) => new Set(prev).add(stockCodeInput));
       setStockCodeInput("");
       setStockNameInput("");
     }
   };
 
-  const handleClose = () => {
-    setStockCodeInput("");
-    setStockNameInput("");
-    onOpenChange(false);
+  const handleClose = (nextOpen: boolean) => {
+    if (!nextOpen) {
+      setStockCodeInput("");
+      setStockNameInput("");
+      setAddedCodes(new Set());
+    }
+    onOpenChange(nextOpen);
   };
 
   return (
@@ -120,7 +127,7 @@ export function ManualAddStockDialog({
             <Button
               size="sm"
               onClick={handleManualAdd}
-              disabled={stockCodeInput.length !== 6 || !stockNameInput.trim() || addingCode}
+              disabled={stockCodeInput.length !== 6 || !stockNameInput.trim() || addingCode || addedCodes.has(stockCodeInput)}
               className="h-9 px-3"
             >
               {addingCode ? (

@@ -212,17 +212,30 @@ export function TimePreviewChartLarge({
       // 判断是否所有值都相同（一字涨停等情况）
       const isFlatLine = dataMax === dataMin;
 
+      // 绘图区域留出左右边距给纵坐标标签
+      const leftMargin = prevClose && prevClose > 0 ? 36 : 4;
+      const rightMargin = prevClose && prevClose > 0 ? 36 : 4;
+      const chartLeft = leftMargin;
+      const chartRight = width - rightMargin;
+      const chartWidth = chartRight - chartLeft;
+
       // 价格转 Y 坐标
-      const padding = 4;
+      const vPadding = 4;
       function priceToY(price: number): number {
-        if (isFlatLine) return padding;
-        return height - padding - ((price - minVal) / range) * (height - padding * 2);
+        if (isFlatLine) return vPadding;
+        return height - vPadding - ((price - minVal) / range) * (height - vPadding * 2);
+      }
+
+      // 价格转涨跌幅百分比
+      function priceToChangeRate(price: number): number {
+        if (!prevClose || prevClose <= 0) return 0;
+        return ((price - prevClose) / prevClose) * 100;
       }
 
       // 计算坐标点（固定 240 个点的宽度）
       const totalPoints = data.length;
       const points = data.map((val, i) => ({
-        x: (i / (totalPoints - 1)) * (width - 8) + 4,
+        x: (i / (totalPoints - 1)) * chartWidth + chartLeft,
         y:
           val !== null && !isNaN(val)
             ? priceToY(val)
@@ -233,8 +246,8 @@ export function TimePreviewChartLarge({
       if (prevClose && prevClose > 0) {
         const zeroY = priceToY(prevClose);
         ctx.beginPath();
-        ctx.moveTo(4, zeroY);
-        ctx.lineTo(width - 4, zeroY);
+        ctx.moveTo(chartLeft, zeroY);
+        ctx.lineTo(chartRight, zeroY);
         ctx.strokeStyle = "rgba(0, 0, 0, 0.12)";
         ctx.lineWidth = 1;
         ctx.setLineDash([4, 4]);
@@ -259,7 +272,7 @@ export function TimePreviewChartLarge({
         const lastValidIndex = points.findLastIndex((p) => p.y !== null);
         const lastValidX = points[lastValidIndex]?.x || 0;
         // 填充区域：线条到 0 轴之间
-        const fillBaseY = prevClose && prevClose > 0 ? priceToY(prevClose) : height - padding;
+        const fillBaseY = prevClose && prevClose > 0 ? priceToY(prevClose) : height - vPadding;
         ctx.lineTo(lastValidX, fillBaseY);
         ctx.lineTo(points[0].x, fillBaseY);
         ctx.closePath();
@@ -316,14 +329,60 @@ export function TimePreviewChartLarge({
 
         if (lastValidX) {
           ctx.beginPath();
-          ctx.moveTo(lastValidX, padding);
-          ctx.lineTo(lastValidX, height - padding);
+          ctx.moveTo(lastValidX, vPadding);
+          ctx.lineTo(lastValidX, height - vPadding);
           ctx.strokeStyle = "rgba(249, 115, 22, 0.3)";
           ctx.lineWidth = 1;
           ctx.setLineDash([4, 4]);
           ctx.stroke();
           ctx.setLineDash([]);
         }
+      }
+
+      // ===== 绘制涨跌幅纵坐标 =====
+      if (prevClose && prevClose > 0) {
+        const topChangeRate = priceToChangeRate(maxVal);
+        const bottomChangeRate = priceToChangeRate(minVal);
+
+        const formatRate = (rate: number) => {
+          const sign = rate >= 0 ? "+" : "";
+          return `${sign}${rate.toFixed(2)}%`;
+        };
+
+        ctx.font = "10px ui-monospace, monospace";
+        ctx.textBaseline = "middle";
+
+        // 左侧上方（最高价对应涨跌幅）
+        ctx.fillStyle = topChangeRate >= 0 ? "#E94040" : "#2DC08E";
+        ctx.textAlign = "left";
+        ctx.fillText(formatRate(topChangeRate), 2, vPadding + 4);
+
+        // 左侧中间（0% = 昨收价）
+        if (prevClose > 0) {
+          const zeroY = priceToY(prevClose);
+          ctx.fillStyle = "#94a3b8";
+          ctx.fillText("0.00%", 2, zeroY);
+        }
+
+        // 左侧下方（最低价对应涨跌幅）
+        ctx.fillStyle = bottomChangeRate >= 0 ? "#E94040" : "#2DC08E";
+        ctx.fillText(formatRate(bottomChangeRate), 2, height - vPadding - 4);
+
+        // 右侧上方（最高价）
+        ctx.textAlign = "right";
+        ctx.fillStyle = "#94a3b8";
+        ctx.fillText(maxVal.toFixed(2), width - 2, vPadding + 4);
+
+        // 右侧中间（昨收价）
+        if (prevClose > 0) {
+          const zeroY = priceToY(prevClose);
+          ctx.fillStyle = "#94a3b8";
+          ctx.fillText(prevClose.toFixed(2), width - 2, zeroY);
+        }
+
+        // 右侧下方（最低价）
+        ctx.fillStyle = "#94a3b8";
+        ctx.fillText(minVal.toFixed(2), width - 2, height - vPadding - 4);
       }
     },
     [data, prevClose]
