@@ -81,14 +81,19 @@ export function useStockChanges({
     const pickFemaleVoice = (): SpeechSynthesisVoice | null => {
       const voices = synth.getVoices();
       if (voices.length === 0) return null;
+      // 优先级：Siri 神经网络语音 > 大陆普通话女声 > 大陆普通话任意 > 排除粤语/台语
       return voices.find(
-        (v) => v.lang.startsWith("zh-CN") && /Xiaoxiao|Xiaoyi|Yaoyao|Huihui|female|nv|女/i.test(v.name) && !/male|nan|男|Yunyang|Ting-Ting/i.test(v.name)
+        // 1. 最优：zh-CN 的 Siri 神经网络语音（名称常为「语音 1」「语音 2」等，质量最高）
+        (v) => v.lang.startsWith("zh-CN") && /语音|Siri/i.test(v.name) && !/male|nan|男|Yunyang/i.test(v.name)
       ) || voices.find(
-        (v) => v.lang.startsWith("zh-CN") && !/male|nan|男|Yunyang|Ting-Ting/i.test(v.name)
+        // 2. zh-CN 女声：Tingting(婷婷/大陆普通话)、Xiaoxiao、Xiaoyi 等
+        (v) => v.lang.startsWith("zh-CN") && !/male|nan|男|Yunyang/i.test(v.name)
       ) || voices.find(
+        // 3. zh-CN 任意
         (v) => v.lang.startsWith("zh-CN")
       ) || voices.find(
-        (v) => v.lang.startsWith("zh") && !/HK|TW|Ting-Ting/i.test(v.name)
+        // 4. 其他 zh 但排除粤语(zh-HK/Sin-ji)和台语(zh-TW/Meijia/Yu-shu)
+        (v) => v.lang.startsWith("zh") && !/HK|TW|Sin-ji|Meijia|Yu-shu/i.test(v.name)
       ) || null;
     };
 
