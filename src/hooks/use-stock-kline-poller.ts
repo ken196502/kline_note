@@ -37,8 +37,8 @@ export function useStockKlinePoller({
   blockId,
   historyData,
   onRefreshHistory,
-  intervalMs = 3000,
-  refreshDelayMs = 800,
+  intervalMs = 1500,
+  refreshDelayMs = 500,
 }: UseStockKlinePollerOptions) {
   // 股票轮询列表，用 ref 存储以避免频繁触发 useEffect 重渲染
   const stockListRef = useRef<StockPollItem[]>([]);
@@ -80,8 +80,8 @@ export function useStockKlinePoller({
     // 从未更新过，需要更新
     if (item.lastKLineUpdateAt === 0) return true;
 
-    // 在交易时段内：每 30 秒更新一次
-    if (isInTradingSession() && timeSinceLastUpdate >= 30_000) return true;
+    // 在交易时段内：每 15 秒更新一次
+    if (isInTradingSession() && timeSinceLastUpdate >= 15_000) return true;
 
     // 非交易时段：已更新过一次即可，不再重复请求
     // （原逻辑用 isCurrentTime15 判断，但非交易时段该值永远为 false，导致无限轮询）

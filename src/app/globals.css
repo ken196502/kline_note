@@ -169,6 +169,12 @@ body {
   animation: pulse-dot 2s ease-in-out infinite;
 }
 
+/* 异动播报滚动动画 - 由 JS 控制，此处仅保留 keyframes 供备用 */
+@keyframes ticker-scroll {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+
 /* 减少动效偏好 */
 @media (prefers-reduced-motion: reduce) {
   .animate-float,

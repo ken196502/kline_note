@@ -1,0 +1,160 @@
+"use client";
+
+import { useState, useEffect, useRef, useCallback } from "react";
+
+export interface StockChangeItem {
+  code: string;
+  name: string;
+  time: string;
+  type: string;
+  changeRate: number;
+  market: number;
+}
+
+interface UseStockChangesOptions {
+  /** 当前板块的股票代码列表，用于过滤异动 */
+  stockCodes: string[];
+  /** 轮询间隔（ms），默认 2000 */
+  intervalMs?: number;
+  /** 是否启用，默认 true */
+  enabled?: boolean;
+}
+
+// 判断当前是否在A股交易时段（9:25 - 15:15）
+function isInTradingSession(): boolean {
+  const now = new Date();
+  const day = now.getDay();
+  if (day === 0 || day === 6) return false;
+  const hours = now.getHours();
+  const minutes = now.getMinutes();
+  const timeInMinutes = hours * 60 + minutes;
+  return timeInMinutes >= 565 && timeInMinutes <= 915;
+}
+
+export function useStockChanges({
+  stockCodes,
+  intervalMs = 2000,
+  enabled = true,
+}: UseStockChangesOptions) {
+  const [changes, setChanges] = useState<StockChangeItem[]>([]);
+  const [trading, setTrading] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [blocked, setBlocked] = useState(false);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const lastFetchRef = useRef(0);
+  const stockCodesRef = useRef(stockCodes);
+  stockCodesRef.current = stockCodes;
+
+  // 板块切换时清空旧数据（比较股票代码列表内容）
+  const prevCodesKeyRef = useRef("");
+  useEffect(() => {
+    const key = stockCodes.slice().sort().join(",");
+    if (key !== prevCodesKeyRef.current) {
+      setChanges([]);
+      setBlocked(false);
+      prevCodesKeyRef.current = key;
+    }
+  }, [stockCodes]);
+
+  const fetchChanges = useCallback(async () => {
+    // 冷却：距离上次请求不足 2 秒则跳过
+    const now = Date.now();
+    if (now - lastFetchRef.current < 2000) return;
+
+    const codes = stockCodesRef.current;
+    if (codes.length === 0) {
+      setChanges([]);
+      return;
+    }
+
+    lastFetchRef.current = now;
+    setLoading(true);
+    try {
+      const codesParam = codes.join(",");
+      const res = await fetch(`/api/stock-changes?codes=${encodeURIComponent(codesParam)}`);
+      if (res.status === 429) {
+        setBlocked(true);
+        return;
+      }
+      if (res.ok) {
+        const result = await res.json();
+        setTrading(result.trading ?? false);
+        setChanges(result.data ?? []);
+        setBlocked(false);
+      }
+    } catch {
+      // 静默失败
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // 启动/停止轮询
+  useEffect(() => {
+    if (!enabled) {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+      setChanges([]);
+      setTrading(false);
+      return;
+    }
+
+    // 检查是否在交易时段
+    const checkAndStart = () => {
+      if (!isInTradingSession()) {
+        setTrading(false);
+        // 非交易时段不清空已有数据，保留最近一次记录
+        if (timerRef.current) {
+          clearInterval(timerRef.current);
+          timerRef.current = null;
+        }
+        return;
+      }
+
+      // 在交易时段，立即请求一次
+      fetchChanges();
+
+      // 设置定时轮询
+      if (!timerRef.current) {
+        timerRef.current = setInterval(() => {
+          if (isInTradingSession()) {
+            fetchChanges();
+          } else {
+            setTrading(false);
+            setChanges([]);
+            if (timerRef.current) {
+              clearInterval(timerRef.current);
+              timerRef.current = null;
+            }
+          }
+        }, intervalMs);
+      }
+    };
+
+    checkAndStart();
+
+    // 每分钟检查一次交易时段状态
+    const checkTimer = setInterval(() => {
+      checkAndStart();
+    }, 60000);
+
+    return () => {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+      clearInterval(checkTimer);
+    };
+  }, [enabled, intervalMs, fetchChanges]);
+
+  return {
+    changes,
+    trading,
+    loading,
+    blocked,
+    /** 手动刷新异动数据 */
+    refresh: fetchChanges,
+  };
+}

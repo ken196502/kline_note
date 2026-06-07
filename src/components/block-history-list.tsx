@@ -1,17 +1,20 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   Plus,
   X,
+  Activity,
 } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import { zhCN } from "date-fns/locale";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import { cn } from "@/lib/utils";
 import { DateStockGroup, type DateStockItem } from "@/components/date-stock-group";
 import type { CustomDate } from "@/types/custom-date";
+import type { StockChangeItem } from "@/hooks/use-stock-changes";
 
 // 历史行情日期分组类型
 export interface HistoryDayGroup {
@@ -70,6 +73,13 @@ interface BlockHistoryListProps {
 
   // 添加股票弹窗关闭后刷新数据
   onStocksChanged?: () => void;
+
+  // 异动播报数据
+  stockChanges?: StockChangeItem[];
+  isTrading?: boolean;
+  changesLoading?: boolean;
+  changesBlocked?: boolean;
+  onRefreshChanges?: () => void;
 }
 
 export function BlockHistoryList({
@@ -96,6 +106,11 @@ export function BlockHistoryList({
   onAddStock,
   onUpdateStockColor,
   onStocksChanged,
+  stockChanges = [],
+  isTrading = false,
+  changesLoading = false,
+  changesBlocked = false,
+  onRefreshChanges,
 }: BlockHistoryListProps) {
   // 添加日期相关本地状态
   const [addingDate, setAddingDate] = useState(false);
@@ -115,6 +130,66 @@ export function BlockHistoryList({
     setNewDateValue("");
   };
 
+  // 异动播报滚动 - 步进式：停留3秒，快滑0.3秒
+  const tickerRef = useRef<HTMLDivElement>(null);
+  const [tickerPaused, setTickerPaused] = useState(false);
+  const [tickerOffset, setTickerOffset] = useState(0);
+  const tickerPausedRef = useRef(false);
+
+  // 按时间倒序排列的异动条目
+  const tickerItems = stockChanges;
+
+  // 步进滚动控制
+  useEffect(() => {
+    if (tickerItems.length === 0) {
+      setTickerOffset(0);
+      return;
+    }
+
+    const container = tickerRef.current;
+    if (!container) return;
+
+    const inner = container.firstElementChild as HTMLElement | null;
+    if (!inner) return;
+
+    // 切换板块/数据变化时重置到第一条
+    setTickerOffset(0);
+    let timer: ReturnType<typeof setTimeout>;
+    let currentIndex = 0;
+
+    const step = () => {
+      if (tickerPausedRef.current) {
+        timer = setTimeout(step, 500); // 暂停时半秒再检查
+        return;
+      }
+
+      // 获取每个子元素的宽度和位置
+      const children = Array.from(inner.children) as HTMLElement[];
+      if (children.length === 0) return;
+
+      const count = tickerItems.length;
+      currentIndex = (currentIndex + 1) % count;
+
+      const targetChild = children[currentIndex];
+      if (targetChild) {
+        setTickerOffset(targetChild.offsetLeft);
+      }
+
+      // 停留3秒后移动到下一条
+      timer = setTimeout(step, 3000);
+    };
+
+    // 首次停留3秒后开始
+    timer = setTimeout(step, 3000);
+
+    return () => clearTimeout(timer);
+  }, [tickerItems, selectedBlock?.id]);
+
+  // 同步暂停状态到 ref
+  useEffect(() => {
+    tickerPausedRef.current = tickerPaused;
+  }, [tickerPaused]);
+
   if (!selectedBlock) {
     return (
       <div className="flex-1 lg:min-w-[40%] lg:border-r lg:border-slate-200 bg-white overflow-y-auto relative">
@@ -127,9 +202,77 @@ export function BlockHistoryList({
 
   return (
     <div className="flex-1 lg:min-w-[40%] lg:border-r lg:border-slate-200 bg-white overflow-y-auto relative">
+        {/* 异动播报条 - 始终显示 */}
+        <div
+          className={cn(
+            "border-b overflow-hidden",
+            changesBlocked ? "border-red-200" : "border-slate-200"
+          )}
+        >
+          <div className="flex items-center gap-1.5 px-3 h-5">
+            <Activity className={cn("w-2.5 h-2.5 shrink-0", changesBlocked ? "text-red-500" : isTrading && tickerItems.length > 0 ? "text-amber-500" : "text-slate-400")} />
+            <span className={cn("text-[10px] font-medium shrink-0", changesBlocked ? "text-red-500" : "text-slate-500")}>异动</span>
+            {changesBlocked && (
+              <span className="text-[10px] text-red-500 font-medium shrink-0">请求过频，稍后自动恢复</span>
+            )}
+            {!isTrading && tickerItems.length === 0 && (
+              <span className="text-[10px] text-slate-400 shrink-0">非交易时段</span>
+            )}
+            {!changesBlocked && changesLoading && (
+              <span className="text-[10px] text-slate-400 shrink-0">...</span>
+            )}
+            {!changesBlocked && (
+              <div
+                ref={tickerRef}
+                className="flex-1 overflow-hidden relative h-5 flex items-center"
+                onMouseEnter={() => setTickerPaused(true)}
+                onMouseLeave={() => setTickerPaused(false)}
+              >
+                {tickerItems.length > 0 ? (
+                  <div
+                    className="flex gap-3 whitespace-nowrap inset-y-0 flex items-center transition-transform duration-300 ease-out"
+                    style={{
+                      transform: `translateX(-${tickerOffset}px)`,
+                    }}
+                  >
+                    {tickerItems.map((item, i) => (
+                      <span key={`${item.code}-${item.type}-${i}`} className="inline-flex items-center gap-0.5 text-[10px] px-1">
+                        <span className="text-slate-500">{item.time}</span>
+                        <span className={cn("font-medium", item.changeRate >= 0 ? "text-red-600" : "text-green-600")}>
+                          {item.name}
+                        </span>
+                        <span className="text-amber-600">{item.type}</span>
+                        <span className={cn(item.changeRate >= 0 ? "text-red-500" : "text-green-500")}>
+                          {item.changeRate >= 0 ? "+" : ""}{(item.changeRate * 100).toFixed(2)}%
+                        </span>
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <span className="text-[10px] text-slate-400">当前板块暂无异动</span>
+                )}
+              </div>
+            )}
+            {/* 手动刷新按钮 */}
+            {onRefreshChanges && (
+              <button
+                onClick={onRefreshChanges}
+                disabled={changesLoading}
+                className="shrink-0 text-slate-400 hover:text-amber-600 transition-colors disabled:opacity-40"
+                title="刷新异动"
+              >
+                <svg className={cn("w-2.5 h-2.5", changesLoading && "animate-spin")} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+              </button>
+            )}
+          </div>
+        </div>
+
+      {/* 板块内容区域 */}
       <div className="p-3">
         {/* 顶部：添加日期按钮 + 操作按钮 */}
-        <div className="flex items-center gap-1.5 -mt-1 mb-2 flex-wrap">
+        <div className="flex items-center gap-1.5 mb-2 flex-wrap">
           {/* 添加日期按钮 - 左上角 */}
           {addingDate ? (
             <div className="flex items-center gap-1">
