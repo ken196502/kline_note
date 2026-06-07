@@ -177,49 +177,57 @@ export function KLineChart({ symbol, stockName, onDataLoaded }: KLineChartProps)
           abortControllerRef.current.abort();
         }
         abortControllerRef.current = new AbortController();
+        const { signal } = abortControllerRef.current;
 
-        const res = await fetch(`/api/kline?symbol=${targetSymbol}&limit=120`, {
-          signal: abortControllerRef.current.signal,
-        });
+        try {
+          const res = await fetch(`/api/kline?symbol=${targetSymbol}&limit=120`, {
+            signal,
+          });
 
-        if (!res.ok) {
-          callback([]);
-          return;
-        }
+          if (signal.aborted) return;
 
-        const result = await res.json();
-        const klines: KLineChartData[] = result.klines;
-
-        // 检查是否是最新的 symbol
-        if (currentSymbolRef.current !== targetSymbol) {
-          return;
-        }
-
-        if (!klines || klines.length === 0) {
-          callback([]);
-          return;
-        }
-
-        // 直接使用原始价格数据（前复权），同时携带涨跌幅
-        const chartData = klines.map((item) => ({
-          timestamp: new Date(item.date).getTime(),
-          open: item.open,
-          high: item.high,
-          low: item.low,
-          close: item.close,
-          volume: item.amount,
-          changeRate: item.changeRate ?? 0,
-        }));
-
-        callback(chartData);
-
-        onDataLoadedRef.current?.(targetSymbol);
-
-        requestAnimationFrame(() => {
-          if (chartRef.current) {
-            chartRef.current.resize();
+          if (!res.ok) {
+            callback([]);
+            return;
           }
-        });
+
+          const result = await res.json();
+          const klines: KLineChartData[] = result.klines;
+
+          // 检查是否是最新的 symbol
+          if (currentSymbolRef.current !== targetSymbol) {
+            return;
+          }
+
+          if (!klines || klines.length === 0) {
+            callback([]);
+            return;
+          }
+
+          // 直接使用原始价格数据（前复权），同时携带涨跌幅
+          const chartData = klines.map((item) => ({
+            timestamp: new Date(item.date).getTime(),
+            open: item.open,
+            high: item.high,
+            low: item.low,
+            close: item.close,
+            volume: item.amount,
+            changeRate: item.changeRate ?? 0,
+          }));
+
+          callback(chartData);
+
+          onDataLoadedRef.current?.(targetSymbol);
+
+          requestAnimationFrame(() => {
+            if (chartRef.current) {
+              chartRef.current.resize();
+            }
+          });
+        } catch (err) {
+          if (signal.aborted) return;
+          callback([]);
+        }
       },
     });
 

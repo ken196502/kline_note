@@ -169,10 +169,14 @@ body {
   animation: pulse-dot 2s ease-in-out infinite;
 }
 
-/* 异动播报滚动动画 - 由 JS 控制，此处仅保留 keyframes 供备用 */
-@keyframes ticker-scroll {
-  0% { transform: translateX(0); }
-  100% { transform: translateX(-50%); }
+/* 异动播报 - 新条目从左滑入动画 */
+@keyframes ticker-slide-in {
+  0% { transform: translateX(-100%); opacity: 0; }
+  100% { transform: translateX(0); opacity: 1; }
+}
+
+.animate-ticker-slide-in {
+  animation: ticker-slide-in 0.5s ease-out forwards;
 }
 
 /* 减少动效偏好 */

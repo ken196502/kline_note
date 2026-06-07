@@ -134,65 +134,42 @@ export function BlockHistoryList({
     setNewDateValue("");
   };
 
-  // 异动播报滚动 - 步进式：停留3秒，快滑0.3秒
-  const tickerRef = useRef<HTMLDivElement>(null);
-  const [tickerPaused, setTickerPaused] = useState(false);
-  const [tickerOffset, setTickerOffset] = useState(0);
-  const tickerPausedRef = useRef(false);
-
-  // 按时间倒序排列的异动条目
+  // 异动播报 - 新条目从左滑入，旧条目被推右，始终最新在第一个
   const tickerItems = stockChanges;
 
-  // 步进滚动控制
+  // 跟踪上次已显示的条目 key 列表，用于检测新增
+  const prevTickerKeysRef = useRef<string>("");
+  // 板块切换时重置，避免首次加载触发滑入动画
+  const prevBlockIdRef = useRef<string | number | null>(null);
+  // 新条目滑入动画：检测新增条目时触发
+  const [newItemKey, setNewItemKey] = useState<string | null>(null);
+
   useEffect(() => {
-    if (tickerItems.length === 0) {
-      setTickerOffset(0);
+    // 板块切换时重置追踪
+    const blockId = selectedBlock?.id ?? null;
+    if (blockId !== prevBlockIdRef.current) {
+      prevBlockIdRef.current = blockId;
+      prevTickerKeysRef.current = "";
+      setNewItemKey(null);
       return;
     }
 
-    const container = tickerRef.current;
-    if (!container) return;
-
-    const inner = container.firstElementChild as HTMLElement | null;
-    if (!inner) return;
-
-    // 切换板块/数据变化时重置到第一条
-    setTickerOffset(0);
-    let timer: ReturnType<typeof setTimeout>;
-    let currentIndex = 0;
-
-    const step = () => {
-      if (tickerPausedRef.current) {
-        timer = setTimeout(step, 500); // 暂停时半秒再检查
-        return;
+    const currentKey = tickerItems.map((item) => `${item.code}_${item.type}`).join("|");
+    if (currentKey !== prevTickerKeysRef.current && tickerItems.length > 0 && prevTickerKeysRef.current !== "") {
+      // 有新数据变化，找到新增的条目
+      const prevKeys = new Set(prevTickerKeysRef.current.split("|").filter(Boolean));
+      const newItems = tickerItems.filter((item) => !prevKeys.has(`${item.code}_${item.type}`));
+      if (newItems.length > 0) {
+        // 触发新条目的滑入动画
+        setNewItemKey(`${newItems[0].code}_${newItems[0].type}`);
+        // 动画结束后清除
+        const timer = setTimeout(() => setNewItemKey(null), 600);
+        prevTickerKeysRef.current = currentKey;
+        return () => clearTimeout(timer);
       }
-
-      // 获取每个子元素的宽度和位置
-      const children = Array.from(inner.children) as HTMLElement[];
-      if (children.length === 0) return;
-
-      const count = tickerItems.length;
-      currentIndex = (currentIndex + 1) % count;
-
-      const targetChild = children[currentIndex];
-      if (targetChild) {
-        setTickerOffset(targetChild.offsetLeft);
-      }
-
-      // 停留3秒后移动到下一条
-      timer = setTimeout(step, 3000);
-    };
-
-    // 首次停留3秒后开始
-    timer = setTimeout(step, 3000);
-
-    return () => clearTimeout(timer);
+    }
+    prevTickerKeysRef.current = currentKey;
   }, [tickerItems, selectedBlock?.id]);
-
-  // 同步暂停状态到 ref
-  useEffect(() => {
-    tickerPausedRef.current = tickerPaused;
-  }, [tickerPaused]);
 
   if (!selectedBlock) {
     return (
@@ -227,30 +204,32 @@ export function BlockHistoryList({
             )}
             {!changesBlocked && (
               <div
-                ref={tickerRef}
                 className="flex-1 overflow-hidden relative h-5 flex items-center"
-                onMouseEnter={() => setTickerPaused(true)}
-                onMouseLeave={() => setTickerPaused(false)}
               >
                 {tickerItems.length > 0 ? (
-                  <div
-                    className="flex gap-3 whitespace-nowrap inset-y-0 flex items-center transition-transform duration-300 ease-out"
-                    style={{
-                      transform: `translateX(-${tickerOffset}px)`,
-                    }}
-                  >
-                    {tickerItems.map((item, i) => (
-                      <span key={`${item.code}-${item.type}-${i}`} className="inline-flex items-center gap-0.5 text-[10px] px-1">
-                        <span className="text-slate-500">{item.time}</span>
-                        <span className={cn("font-medium", item.changeRate >= 0 ? "text-red-600" : "text-green-600")}>
-                          {item.name}
+                  <div className="flex gap-3 whitespace-nowrap flex items-center">
+                    {tickerItems.map((item, i) => {
+                      const itemKey = `${item.code}_${item.type}`;
+                      const isNew = itemKey === newItemKey;
+                      return (
+                        <span
+                          key={itemKey}
+                          className={cn(
+                            "inline-flex items-center gap-0.5 text-[10px] px-1",
+                            isNew && "animate-ticker-slide-in"
+                          )}
+                        >
+                          <span className="text-slate-500">{item.time}</span>
+                          <span className={cn("font-medium", item.changeRate >= 0 ? "text-red-600" : "text-green-600")}>
+                            {item.name}
+                          </span>
+                          <span className="text-amber-600">{item.type}</span>
+                          <span className={cn(item.changeRate >= 0 ? "text-red-500" : "text-green-500")}>
+                            {item.changeRate >= 0 ? "+" : ""}{(item.changeRate * 100).toFixed(2)}%
+                          </span>
                         </span>
-                        <span className="text-amber-600">{item.type}</span>
-                        <span className={cn(item.changeRate >= 0 ? "text-red-500" : "text-green-500")}>
-                          {item.changeRate >= 0 ? "+" : ""}{(item.changeRate * 100).toFixed(2)}%
-                        </span>
-                      </span>
-                    ))}
+                      );
+                    })}
                   </div>
                 ) : (
                   <span className="text-[10px] text-slate-400">当前板块暂无异动</span>
