@@ -203,10 +203,21 @@ export function TimePreviewChartLarge({
       const dataMin = Math.min(...validData);
       const dataMax = Math.max(...validData);
 
-      // 如果有昨收价，将昨收价纳入范围计算，确保 0 轴可见
-      const baseVal = prevClose && prevClose > 0 ? prevClose : dataMin;
-      const minVal = Math.min(dataMin, baseVal);
-      const maxVal = Math.max(dataMax, baseVal);
+      // 如果有昨收价，将0轴（昨收价）固定在图表50%高度
+      // 计算昨收价与最高价/最低价之间的偏移，取较大值作为对称范围
+      let minVal: number;
+      let maxVal: number;
+      if (prevClose && prevClose > 0) {
+        // 0轴固定在50%，上下对称
+        const upDev = Math.max(dataMax - prevClose, 0);
+        const downDev = Math.max(prevClose - dataMin, 0);
+        const maxDev = Math.max(upDev, downDev);
+        minVal = prevClose - maxDev;
+        maxVal = prevClose + maxDev;
+      } else {
+        minVal = dataMin;
+        maxVal = dataMax;
+      }
       const range = maxVal - minVal || 1;
 
       // 判断是否所有值都相同（一字涨停等情况）

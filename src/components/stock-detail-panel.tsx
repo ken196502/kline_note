@@ -250,7 +250,7 @@ export function StockDetailPanel({
         </div>
 
         {/* 分时缩略图（下）固定高度置底 */}
-        <div className={cn("shrink-0 flex items-center justify-center p-2 overflow-hidden", isSheet ? "h-[20%]" : "h-[25%]")}>
+        <div className={cn("shrink-0 flex items-center justify-center p-2 overflow-hidden", isSheet ? "h-[20%]" : "h-[35%]")}>
           <TimePreviewChartLarge
             data={onlineTimePreview}
             prevClose={onlinePrevClose}

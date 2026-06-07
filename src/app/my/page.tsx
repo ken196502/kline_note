@@ -840,7 +840,7 @@ export default function MyPage() {
           }}
           formatDate={formatDate}
           username={username}
-          noteHeightClass="h-42"
+          noteHeightClass="h-24"
           emptyText="点击股票查看详情"
           stockDetailOpen={stockDetailOpen}
           setStockDetailOpen={setStockDetailOpen}
