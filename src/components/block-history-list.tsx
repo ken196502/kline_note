@@ -220,7 +220,7 @@ export function BlockHistoryList({
                           )}
                         >
                           <span className="text-slate-500">{item.time}</span>
-                          <span className={cn("font-medium", item.changeRate >= 0 ? "text-red-600" : "text-green-600")}>
+                          <span className="font-medium text-slate-800">
                             {item.name}
                           </span>
                           <span className="text-amber-600">{item.type}</span>

@@ -82,15 +82,13 @@ export function useStockChanges({
       const voices = synth.getVoices();
       if (voices.length === 0) return null;
       return voices.find(
-        (v) => v.lang.startsWith("zh") && /Ting-Ting|female|nv|女|Xiaoxiao|Xiaoyi|Yaoyao|Huihui|Kangkang/i.test(v.name) && !/male|nan|男|Yunyang/i.test(v.name)
+        (v) => v.lang.startsWith("zh-CN") && /Xiaoxiao|Xiaoyi|Yaoyao|Huihui|female|nv|女/i.test(v.name) && !/male|nan|男|Yunyang|Ting-Ting/i.test(v.name)
       ) || voices.find(
-        (v) => v.lang.startsWith("zh-CN") && !/male|nan|男|Yunyang/i.test(v.name)
-      ) || voices.find(
-        (v) => v.lang.startsWith("zh") && !/male|nan|男|Yunyang/i.test(v.name)
+        (v) => v.lang.startsWith("zh-CN") && !/male|nan|男|Yunyang|Ting-Ting/i.test(v.name)
       ) || voices.find(
         (v) => v.lang.startsWith("zh-CN")
       ) || voices.find(
-        (v) => v.lang.startsWith("zh")
+        (v) => v.lang.startsWith("zh") && !/HK|TW|Ting-Ting/i.test(v.name)
       ) || null;
     };
 
