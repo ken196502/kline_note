@@ -40,10 +40,14 @@ export function useStockChanges({
   const [trading, setTrading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [blocked, setBlocked] = useState(false);
+  const [ttsEnabled, setTtsEnabled] = useState(false);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastFetchRef = useRef(0);
   const stockCodesRef = useRef(stockCodes);
   stockCodesRef.current = stockCodes;
+
+  // TTS 相关
+  const spokenKeysRef = useRef<Set<string>>(new Set());
 
   // 板块切换时清空旧数据（比较股票代码列表内容）
   const prevCodesKeyRef = useRef("");
@@ -52,9 +56,66 @@ export function useStockChanges({
     if (key !== prevCodesKeyRef.current) {
       setChanges([]);
       setBlocked(false);
+      spokenKeysRef.current.clear();
       prevCodesKeyRef.current = key;
     }
   }, [stockCodes]);
+
+  // TTS 朗读：检测新增的封涨停板异动
+  useEffect(() => {
+    if (!ttsEnabled || typeof window === "undefined" || !("speechSynthesis" in window)) return;
+
+    const newLimitUps = changes.filter(
+      (item) => item.type === "封涨停板" && !spokenKeysRef.current.has(`${item.code}_${item.type}`)
+    );
+
+    if (newLimitUps.length === 0) return;
+
+    // 记录已朗读
+    for (const item of newLimitUps) {
+      spokenKeysRef.current.add(`${item.code}_${item.type}`);
+    }
+
+    // 选择中文女声（语音列表可能异步加载）
+    const synth = window.speechSynthesis;
+    const pickFemaleVoice = (): SpeechSynthesisVoice | null => {
+      const voices = synth.getVoices();
+      if (voices.length === 0) return null;
+      return voices.find(
+        (v) => v.lang.startsWith("zh") && /Ting-Ting|female|nv|女|Xiaoxiao|Xiaoyi|Yaoyao|Huihui|Kangkang/i.test(v.name) && !/male|nan|男|Yunyang/i.test(v.name)
+      ) || voices.find(
+        (v) => v.lang.startsWith("zh-CN") && !/male|nan|男|Yunyang/i.test(v.name)
+      ) || voices.find(
+        (v) => v.lang.startsWith("zh") && !/male|nan|男|Yunyang/i.test(v.name)
+      ) || voices.find(
+        (v) => v.lang.startsWith("zh-CN")
+      ) || voices.find(
+        (v) => v.lang.startsWith("zh")
+      ) || null;
+    };
+
+    const speakItems = () => {
+      for (const item of newLimitUps) {
+        const utterance = new SpeechSynthesisUtterance(`${item.name}，封涨停板`);
+        utterance.lang = "zh-CN";
+        const voice = pickFemaleVoice();
+        if (voice) utterance.voice = voice;
+        utterance.rate = 1.1;
+        synth.speak(utterance);
+      }
+    };
+
+    // 语音列表可能还没加载完，先尝试；如果为空则等 voiceschanged 事件
+    if (synth.getVoices().length > 0) {
+      speakItems();
+    } else {
+      const onVoicesChanged = () => {
+        synth.removeEventListener("voiceschanged", onVoicesChanged);
+        speakItems();
+      };
+      synth.addEventListener("voiceschanged", onVoicesChanged);
+    }
+  }, [changes, ttsEnabled]);
 
   const fetchChanges = useCallback(async () => {
     // 冷却：距离上次请求不足 2 秒则跳过
@@ -149,11 +210,24 @@ export function useStockChanges({
     };
   }, [enabled, intervalMs, fetchChanges]);
 
+  const toggleTts = useCallback(() => {
+    setTtsEnabled((prev) => {
+      const next = !prev;
+      // 关闭时停止正在朗读的语音
+      if (!next && typeof window !== "undefined" && "speechSynthesis" in window) {
+        window.speechSynthesis.cancel();
+      }
+      return next;
+    });
+  }, []);
+
   return {
     changes,
     trading,
     loading,
     blocked,
+    ttsEnabled,
+    toggleTts,
     /** 手动刷新异动数据 */
     refresh: fetchChanges,
   };

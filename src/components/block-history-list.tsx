@@ -80,6 +80,8 @@ interface BlockHistoryListProps {
   changesLoading?: boolean;
   changesBlocked?: boolean;
   onRefreshChanges?: () => void;
+  ttsEnabled?: boolean;
+  onToggleTts?: () => void;
 }
 
 export function BlockHistoryList({
@@ -111,6 +113,8 @@ export function BlockHistoryList({
   changesLoading = false,
   changesBlocked = false,
   onRefreshChanges,
+  ttsEnabled = false,
+  onToggleTts,
 }: BlockHistoryListProps) {
   // 添加日期相关本地状态
   const [addingDate, setAddingDate] = useState(false);
@@ -252,6 +256,25 @@ export function BlockHistoryList({
                   <span className="text-[10px] text-slate-400">当前板块暂无异动</span>
                 )}
               </div>
+            )}
+            {/* 朗读/静音按钮 */}
+            {onToggleTts && (
+              <button
+                onClick={onToggleTts}
+                className={cn("shrink-0 transition-colors", ttsEnabled ? "text-amber-500 hover:text-amber-600" : "text-slate-400 hover:text-slate-600")}
+                title={ttsEnabled ? "关闭朗读" : "开启朗读"}
+              >
+                {ttsEnabled ? (
+                  <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072M17.95 6.05a8 8 0 010 11.9M11 5L6 9H2v6h4l5 4V5z" />
+                  </svg>
+                ) : (
+                  <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707A1 1 0 0112 5v14a1 1 0 01-1.707.707L5.586 15z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2" />
+                  </svg>
+                )}
+              </button>
             )}
             {/* 手动刷新按钮 */}
             {onRefreshChanges && (

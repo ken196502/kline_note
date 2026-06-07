@@ -511,7 +511,7 @@ export function useMyPageState() {
   const currentStockCodes = historyData.length > 0
     ? [...new Set(historyData.flatMap((g) => g.stocks.map((s) => s.code)))]
     : [];
-  const { changes: stockChanges, trading: isTrading, loading: changesLoading, blocked: changesBlocked, refresh: refreshChanges } = useStockChanges({
+  const { changes: stockChanges, trading: isTrading, loading: changesLoading, blocked: changesBlocked, ttsEnabled, toggleTts, refresh: refreshChanges } = useStockChanges({
     stockCodes: currentStockCodes,
     enabled: !!selectedBlock,
   });
@@ -613,6 +613,8 @@ export function useMyPageState() {
     changesLoading,
     changesBlocked,
     refreshChanges,
+    ttsEnabled,
+    toggleTts,
     // Detail panel
     stockDetailOpen,
     setStockDetailOpen,

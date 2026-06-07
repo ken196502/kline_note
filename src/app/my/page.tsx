@@ -137,6 +137,8 @@ export default function MyPage() {
           changesLoading={state.changesLoading}
           changesBlocked={state.changesBlocked}
           onRefreshChanges={state.refreshChanges}
+          ttsEnabled={state.ttsEnabled}
+          onToggleTts={state.toggleTts}
         />
 
         <StockDetailPanel
