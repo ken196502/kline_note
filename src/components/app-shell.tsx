@@ -4,17 +4,7 @@ import { useEffect, useCallback } from "react";
 import { usePathname } from "next/navigation";
 import { TabBar } from "@/components/tab-bar";
 import { useAuth } from "@/hooks/use-auth";
-
-// 判断当前是否在A股交易时段（9:25 - 15:15）
-function isInTradingSession(): boolean {
-  const now = new Date();
-  const day = now.getDay();
-  if (day === 0 || day === 6) return false;
-  const hours = now.getHours();
-  const minutes = now.getMinutes();
-  const timeInMinutes = hours * 60 + minutes;
-  return timeInMinutes >= 565 && timeInMinutes <= 915;
-}
+import { isInTradingSession } from "@/lib/trading-day";
 
 // 判断是否显示底部TabBar（登录页和板块详情页不显示）
 function shouldShowTabBar(pathname: string): boolean {

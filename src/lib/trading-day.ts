@@ -51,17 +51,23 @@ export function formatTime(timestamp: string): string {
   return timeStr ?? "";
 }
 
-// 判断当前是否在A股交易时段（9:25 - 15:15）
+// 判断当前是否在A股交易时段（9:25 - 15:15，北京时间）
 // 用于判断是否需要刷新当天的涨停数据
 export function isInTradingSession(): boolean {
   const now = new Date();
-  const day = now.getDay();
+  
+  // 获取北京时间（东八区 UTC+8）
+  const beijingOffset = 8 * 60; // 北京时间比 UTC 快 8 小时（分钟）
+  const utcOffset = now.getTimezoneOffset(); // 本地时间与 UTC 的差值（分钟，本地慢于 UTC 为正值）
+  const beijingTime = new Date(now.getTime() + (beijingOffset + utcOffset) * 60 * 1000);
+  
+  const day = beijingTime.getDay();
 
   // 周末不是交易日
   if (day === 0 || day === 6) return false;
 
-  const hours = now.getHours();
-  const minutes = now.getMinutes();
+  const hours = beijingTime.getHours();
+  const minutes = beijingTime.getMinutes();
   const timeInMinutes = hours * 60 + minutes;
 
   // 9:25 = 9*60+25 = 565, 15:15 = 15*60+15 = 915

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { isInTradingSession } from "@/lib/trading-day";
 
 // ============ 股票异动 API（东方财富数据源） ============
 
@@ -41,17 +42,6 @@ function parseJsonp(jsonpStr: string): unknown {
 function formatTime(tm: number | string): string {
   const tmStr = String(tm).padStart(6, "0");
   return `${tmStr.slice(0, 2)}:${tmStr.slice(2, 4)}`;
-}
-
-// 判断当前是否在A股交易时段（9:25 - 15:15）
-function isInTradingSession(): boolean {
-  const now = new Date();
-  const day = now.getDay();
-  if (day === 0 || day === 6) return false;
-  const hours = now.getHours();
-  const minutes = now.getMinutes();
-  const timeInMinutes = hours * 60 + minutes;
-  return timeInMinutes >= 565 && timeInMinutes <= 915;
 }
 
 async function fetchStockChanges(): Promise<StockChangeItem[]> {

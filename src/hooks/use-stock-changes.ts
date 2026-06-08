@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
+import { isInTradingSession } from "@/lib/trading-day";
 
 export interface StockChangeItem {
   code: string;
@@ -18,17 +19,6 @@ interface UseStockChangesOptions {
   intervalMs?: number;
   /** 是否启用，默认 true */
   enabled?: boolean;
-}
-
-// 判断当前是否在A股交易时段（9:25 - 15:15）
-function isInTradingSession(): boolean {
-  const now = new Date();
-  const day = now.getDay();
-  if (day === 0 || day === 6) return false;
-  const hours = now.getHours();
-  const minutes = now.getMinutes();
-  const timeInMinutes = hours * 60 + minutes;
-  return timeInMinutes >= 565 && timeInMinutes <= 915;
 }
 
 export function useStockChanges({
