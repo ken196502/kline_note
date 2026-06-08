@@ -97,6 +97,8 @@ export function useMyPageState() {
   // 本地缓存：播报白名单（按板块存储），仅这些股票参与播报
   interface BroadcastItem { code: string; name: string; blockName: string }
   const BROADCAST_KEY = "kline_broadcast_stocks_v2";
+  // 全局播报名单（独立存储，合并所有板块的播报条目，按code+blockName去重）
+  const GLOBAL_BROADCAST_KEY = "kline_broadcast_global";
   const getBroadcastItems = useCallback((blockId: number): BroadcastItem[] => {
     if (typeof window === "undefined") return [];
     try {
@@ -119,13 +121,42 @@ export function useMyPageState() {
       // 静默失败
     }
   }, []);
+
+  // 全局播报名单：从独立localStorage读取，编辑保存时更新，切换板块不影响
+  const [globalBroadcastItems, setGlobalBroadcastItems] = useState<BroadcastItem[]>(() => {
+    if (typeof window === "undefined") return [];
+    try {
+      const raw = localStorage.getItem(GLOBAL_BROADCAST_KEY);
+      return raw ? JSON.parse(raw) : [];
+    } catch {
+      return [];
+    }
+  });
+  // 同步写入localStorage的辅助函数
+  const syncGlobalBroadcast = useCallback((items: BroadcastItem[]) => {
+    setGlobalBroadcastItems(items);
+    try {
+      localStorage.setItem(GLOBAL_BROADCAST_KEY, JSON.stringify(items));
+    } catch {
+      // 静默失败
+    }
+  }, []);
+  // 合并某个板块的播报条目到全局名单（按 code+blockName 去重）
+  const mergeBlockToGlobal = useCallback((blockItems: BroadcastItem[]) => {
+    setGlobalBroadcastItems((prev) => {
+      const existing = new Set(prev.map((i) => `${i.code}_${i.blockName}`));
+      const toAdd = blockItems.filter((i) => !existing.has(`${i.code}_${i.blockName}`));
+      const next = [...prev, ...toAdd];
+      try {
+        localStorage.setItem(GLOBAL_BROADCAST_KEY, JSON.stringify(next));
+      } catch { /* 静默 */ }
+      return next;
+    });
+  }, []);
+
   // 当前板块的播报白名单（非编辑模式也需读取，用于加粗显示）
   const broadcastItems = selectedBlock ? getBroadcastItems(selectedBlock.id) : [];
   const broadcastStocks = new Set(broadcastItems.map((i) => i.code));
-
-  // 全局播报白名单：合并所有板块的播报条目，用于异动播报全局过滤和显示
-  const allBroadcastItems = blocks.flatMap((b) => getBroadcastItems(b.id));
-  const allBroadcastStocks = new Set(allBroadcastItems.map((i) => i.code));
 
   // 股票详情抽屉（lg以下）
   const [stockDetailOpen, setStockDetailOpen] = useState(false);
@@ -543,12 +574,13 @@ export function useMyPageState() {
     onRefreshHistory: refreshStocks,
   });
 
-  // 异动播报：有全局白名单时仅播白名单内的，无白名单时播当前板块全部
+  // 异动播报：有全局播报名单时仅播名单内的，无名单时播当前板块全部
   const currentStockCodes = historyData.length > 0
     ? [...new Set(historyData.flatMap((g) => g.stocks.map((s) => s.code)))]
     : [];
-  const filteredStockCodes = allBroadcastStocks.size > 0
-    ? [...allBroadcastStocks]
+  const globalBroadcastStocks = new Set(globalBroadcastItems.map((i) => i.code));
+  const filteredStockCodes = globalBroadcastStocks.size > 0
+    ? [...globalBroadcastStocks]
     : currentStockCodes;
   const { changes: stockChanges, trading: isTrading, loading: changesLoading, blocked: changesBlocked, ttsEnabled, toggleTts, refresh: refreshChanges } = useStockChanges({
     stockCodes: filteredStockCodes,
@@ -603,7 +635,7 @@ export function useMyPageState() {
     });
   }, []);
 
-  // 保存编辑（将勾选的股票信息作为播报白名单写入本地缓存）
+  // 保存编辑（将勾选的股票信息作为播报白名单写入本地缓存，并合并到全局名单）
   const saveEditMode = useCallback(() => {
     if (selectedBlock) {
       // 从 historyData 中查找每个 code 的 name 和 sourceBlockName
@@ -621,10 +653,12 @@ export function useMyPageState() {
         });
       }
       saveBroadcastItems(selectedBlock.id, items);
+      // 合并到全局播报名单
+      mergeBlockToGlobal(items);
     }
     setEditMode(false);
     setCheckedStocks(new Set());
-  }, [checkedStocks, selectedBlock, historyData, saveBroadcastItems]);
+  }, [checkedStocks, selectedBlock, historyData, saveBroadcastItems, mergeBlockToGlobal]);
 
   const formatDate = (dateStr: string) => {
     const date = parseISO(dateStr);
@@ -719,7 +753,7 @@ export function useMyPageState() {
     checkedStocks,
     broadcastStocks,
     broadcastItems,
-    allBroadcastItems,
+    globalBroadcastItems,
     enterEditMode,
     cancelEditMode,
     clearCheckedStocks,

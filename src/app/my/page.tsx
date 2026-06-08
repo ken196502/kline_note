@@ -39,7 +39,7 @@ export default function MyPage() {
         onToggleTts={state.toggleTts}
         editMode={state.editMode}
         checkedStocks={state.checkedStocks}
-        broadcastItems={state.allBroadcastItems}
+        broadcastItems={state.globalBroadcastItems}
         historyData={state.historyData}
         onEnterEditMode={state.enterEditMode}
         onCancelEditMode={state.cancelEditMode}
