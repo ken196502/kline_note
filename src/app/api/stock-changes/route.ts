@@ -124,34 +124,39 @@ async function fetchStockChanges(): Promise<StockChangeItem[]> {
 
 export const dynamic = "force-dynamic";
 
-// 简易限流：记录最近请求时间，3 秒内只允许一次
-let lastRequestTime = 0;
+// 共享缓存：多客户端共享同一份异动数据，避免重复请求东财 API
+interface CacheData {
+  data: StockChangeItem[];
+  trading: boolean;
+  fetchTime: number;
+}
+let sharedCache: CacheData | null = null;
+const CACHE_TTL = 3000; // 缓存有效期 3 秒
 
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl;
   const codesParam = searchParams.get("codes");
 
-  // 限流检查
   const now = Date.now();
-  if (now - lastRequestTime < 3000) {
-    return NextResponse.json({ data: [], trading: true, error: "rate_limited" }, { status: 429 });
-  }
-  lastRequestTime = now;
-
-  // 非交易时段仍允许请求，但标记 trading: false
   const trading = isInTradingSession();
 
+  // 如果缓存有效（未过期），直接使用缓存数据
+  if (sharedCache && now - sharedCache.fetchTime < CACHE_TTL) {
+    // 按用户请求的股票代码过滤缓存数据
+    let filteredData = sharedCache.data;
+    if (codesParam) {
+      const codes = new Set(codesParam.split(","));
+      filteredData = filteredData.filter((item) => codes.has(item.code));
+    }
+    return NextResponse.json({ data: filteredData, trading: sharedCache.trading });
+  }
+
+  // 缓存过期或不存在，重新请求东财 API
   let allChanges: StockChangeItem[];
   try {
     allChanges = await fetchStockChanges();
   } catch {
     return NextResponse.json({ data: [], trading, error: "fetch_failed" });
-  }
-
-  // 如果传入了股票代码列表，只返回这些股票的异动
-  if (codesParam) {
-    const codes = new Set(codesParam.split(","));
-    allChanges = allChanges.filter((item) => codes.has(item.code));
   }
 
   // 按股票代码+类型去重，同一只股票同一种异动只保留最新一条
@@ -166,5 +171,19 @@ export async function GET(request: NextRequest) {
     return b.time.localeCompare(a.time);
   });
 
-  return NextResponse.json({ data: result, trading });
+  // 更新共享缓存
+  sharedCache = {
+    data: result,
+    trading,
+    fetchTime: now,
+  };
+
+  // 按用户请求的股票代码过滤
+  let filteredData = result;
+  if (codesParam) {
+    const codes = new Set(codesParam.split(","));
+    filteredData = filteredData.filter((item) => codes.has(item.code));
+  }
+
+  return NextResponse.json({ data: filteredData, trading });
 }
