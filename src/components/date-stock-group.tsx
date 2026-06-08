@@ -78,6 +78,13 @@ interface DateStockGroupProps {
   onUpdateStockColor?: (stockCode: string, color: string) => Promise<boolean>;
   /** 添加股票弹窗关闭后刷新数据 */
   onStocksChanged?: () => void;
+
+  // 批量编辑模式
+  editMode?: boolean;
+  checkedStocks?: Set<string>;
+  broadcastStocks?: Set<string>;
+  broadcastItems?: { code: string; name: string; blockName: string }[];
+  onToggleStockCheck?: (dateId: number, stockCode: string) => void;
 }
 
 export function DateStockGroup({
@@ -102,6 +109,11 @@ export function DateStockGroup({
   onAddStock,
   onUpdateStockColor,
   onStocksChanged,
+  editMode = false,
+  checkedStocks = new Set(),
+  broadcastStocks = new Set(),
+  broadcastItems = [],
+  onToggleStockCheck,
 }: DateStockGroupProps) {
   const isSelected = (code: string) => selectedCode === code && selectedDate === date;
 
@@ -207,35 +219,59 @@ export function DateStockGroup({
       {/* 该日期下的股票列表 - 支持拖动排序 */}
       {!collapsed && (
         <div className="flex flex-wrap gap-1">
-          {stocks.map((stock) => (
+          {stocks.map((stock) => {
+            const isChecked = checkedStocks.has(stock.code);
+            return (
             <div
               key={`${date}-${stock.code}`}
-              draggable
-              onDragStart={(e) => {
+              draggable={!editMode}
+              onDragStart={editMode ? undefined : (e) => {
                 e.dataTransfer.effectAllowed = "move";
                 e.dataTransfer.setData("text/plain", stock.code);
                 onDragStart(stock.code, customDateId);
               }}
-              onDragOver={(e) => {
+              onDragOver={editMode ? undefined : (e) => {
                 e.preventDefault();
                 e.dataTransfer.dropEffect = "move";
                 onDragOver(stock.code, customDateId);
               }}
-              onDragEnd={onDragEnd}
-              onClick={() => onSelectStock(stock)}
-              onContextMenu={(e) => handleContextMenu(e, stock)}
+              onDragEnd={editMode ? undefined : onDragEnd}
+              onClick={editMode && onToggleStockCheck ? () => onToggleStockCheck(customDateId, stock.code) : () => onSelectStock(stock)}
+              onContextMenu={editMode ? undefined : (e) => handleContextMenu(e, stock)}
               className={cn(
-                "w-[120px] h-8 shrink-0 flex items-stretch border hover:bg-orange-50/50 transition-colors text-xs cursor-pointer",
+                "w-[120px] h-8 shrink-0 flex items-stretch border hover:bg-orange-50/50 transition-colors text-xs cursor-pointer relative",
                 !stock.hasPrice && "border-dashed border-slate-200/60",
                 isSelected(stock.code) &&
                   "bg-orange-50/60 border-orange-200 border-solid",
                 draggingStock === stock.code && "opacity-50",
                 dragOverStock === stock.code &&
                   dragDateId === customDateId &&
-                  "border-orange-400 border-solid"
+                  "border-orange-400 border-solid",
+                editMode && isChecked && "border-blue-400 border-solid",
+                editMode && !isChecked && "opacity-40 bg-slate-50 border-slate-300 border-dashed",
               )}
             >
-              {/* 左侧拖动区域 */}
+              {/* 编辑模式勾选指示器 */}
+              {editMode && (
+                <div className="flex items-center pl-1.5 pr-0.5">
+                  <div
+                    className={cn(
+                      "w-3 h-3 rounded-sm border flex items-center justify-center transition-colors",
+                      isChecked
+                        ? "bg-blue-500 border-blue-500"
+                        : "border-slate-300 bg-white"
+                    )}
+                  >
+                    {isChecked && (
+                      <svg className="w-2 h-2 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                      </svg>
+                    )}
+                  </div>
+                </div>
+              )}
+              {/* 左侧拖动区域 - 编辑模式隐藏 */}
+              {!editMode && (
               <div
                 draggable
                 onDragStart={(e) => {
@@ -253,15 +289,18 @@ export function DateStockGroup({
               >
                 <GripVertical className="w-2.5 h-2.5 text-slate-300" />
               </div>
+              )}
               {/* 右侧股票信息 */}
               <div
                 className="flex-1 flex flex-col justify-center px-1.5 py-1"
-                onClick={() => onSelectStock(stock)}
+                onClick={editMode ? undefined : () => onSelectStock(stock)}
               >
                 <div className="flex items-center">
                   <span
                     className={cn(
                       "truncate",
+                      editMode && !isChecked && "text-slate-400",
+                      !editMode && broadcastStocks.has(stock.code) && "font-bold",
                       stock.nameColor ? "" : "text-slate-900"
                     )}
                     style={stock.nameColor ? { color: stock.nameColor } : undefined}
@@ -286,21 +325,10 @@ export function DateStockGroup({
                     <span className="font-mono text-[10px] text-slate-300 shrink-0">--</span>
                   )}
                 </div>
-                {/* <div className="flex items-center justify-between gap-1">
-                  <span className="text-[10px] text-slate-400 font-mono">
-                    {stock.code}
-                  </span>
-                  {stock.hasPrice ? (
-                    <span className="font-mono text-[11px] text-slate-600 shrink-0">
-                      {stock.latest.toFixed(2)}
-                    </span>
-                  ) : (
-                    <span className="font-mono text-[11px] text-slate-300 shrink-0">--</span>
-                  )}
-                </div> */}
               </div>
             </div>
-          ))}
+            );
+          })}
           {/* 小加号：快速添加股票 */}
           {onAddStock && (
             <button

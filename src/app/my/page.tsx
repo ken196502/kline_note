@@ -6,6 +6,7 @@ import { StockDetailPanel } from "@/components/stock-detail-panel";
 import { BlockHistoryList } from "@/components/block-history-list";
 import { BlockSidebar } from "@/components/block-sidebar";
 import { useMyPageState } from "@/hooks/use-my-page-state";
+import { BroadcastHeader } from "@/components/broadcast-header";
 
 export default function MyPage() {
   const state = useMyPageState();
@@ -27,6 +28,24 @@ export default function MyPage() {
   // ===== 展示模式 =====
   return (
     <div className="h-screen flex flex-col bg-slate-50 overflow-hidden">
+      {/* 异动播报条 - 全局，不随板块切换变化 */}
+      <BroadcastHeader
+        stockChanges={state.stockChanges}
+        isTrading={state.isTrading}
+        changesLoading={state.changesLoading}
+        changesBlocked={state.changesBlocked}
+        onRefreshChanges={state.refreshChanges}
+        ttsEnabled={state.ttsEnabled}
+        onToggleTts={state.toggleTts}
+        editMode={state.editMode}
+        checkedStocks={state.checkedStocks}
+        broadcastItems={state.allBroadcastItems}
+        historyData={state.historyData}
+        onEnterEditMode={state.enterEditMode}
+        onCancelEditMode={state.cancelEditMode}
+        onClearCheckedStocks={state.clearCheckedStocks}
+        onSaveEditMode={state.saveEditMode}
+      />
       {/* 三列布局 */}
       <div className="flex-1 flex overflow-hidden">
         {/* 第一列 - 自定义板块列表 */}
@@ -132,13 +151,11 @@ export default function MyPage() {
           onStocksChanged={() => {
             if (state.selectedBlock) state.refreshStocks(state.selectedBlock.id);
           }}
-          stockChanges={state.stockChanges}
-          isTrading={state.isTrading}
-          changesLoading={state.changesLoading}
-          changesBlocked={state.changesBlocked}
-          onRefreshChanges={state.refreshChanges}
-          ttsEnabled={state.ttsEnabled}
-          onToggleTts={state.toggleTts}
+          editMode={state.editMode}
+          checkedStocks={state.checkedStocks}
+          broadcastStocks={state.broadcastStocks}
+          broadcastItems={state.broadcastItems}
+          onToggleStockCheck={state.toggleStockCheck}
         />
 
         <StockDetailPanel
