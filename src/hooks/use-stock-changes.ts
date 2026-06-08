@@ -144,6 +144,10 @@ export function useStockChanges({
       const res = await fetch(`/api/stock-changes?codes=${encodeURIComponent(codesParam)}`);
       if (res.status === 429) {
         setBlocked(true);
+        // 3秒后自动恢复
+        setTimeout(() => {
+          setBlocked(false);
+        }, 3000);
         return;
       }
       if (res.ok) {
