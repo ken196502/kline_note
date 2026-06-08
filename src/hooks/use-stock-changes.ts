@@ -14,7 +14,7 @@ export interface StockChangeItem {
 interface UseStockChangesOptions {
   /** 当前板块的股票代码列表，用于过滤异动 */
   stockCodes: string[];
-  /** 轮询间隔（ms），默认 2000 */
+  /** 轮询间隔（ms），默认 3000 */
   intervalMs?: number;
   /** 是否启用，默认 true */
   enabled?: boolean;
@@ -33,7 +33,7 @@ function isInTradingSession(): boolean {
 
 export function useStockChanges({
   stockCodes,
-  intervalMs = 2000,
+  intervalMs = 3000,
   enabled = true,
 }: UseStockChangesOptions) {
   const [changes, setChanges] = useState<StockChangeItem[]>([]);
@@ -127,9 +127,9 @@ export function useStockChanges({
   }, [changes, ttsEnabled]);
 
   const fetchChanges = useCallback(async () => {
-    // 冷却：距离上次请求不足 2 秒则跳过
+    // 冷却：距离上次请求不足 3 秒则跳过
     const now = Date.now();
-    if (now - lastFetchRef.current < 2000) return;
+    if (now - lastFetchRef.current < 3000) return;
 
     const codes = stockCodesRef.current;
     if (codes.length === 0) {

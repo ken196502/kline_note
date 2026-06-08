@@ -124,7 +124,7 @@ async function fetchStockChanges(): Promise<StockChangeItem[]> {
 
 export const dynamic = "force-dynamic";
 
-// 简易限流：记录最近请求时间，2 秒内只允许一次
+// 简易限流：记录最近请求时间，3 秒内只允许一次
 let lastRequestTime = 0;
 
 export async function GET(request: NextRequest) {
@@ -133,7 +133,7 @@ export async function GET(request: NextRequest) {
 
   // 限流检查
   const now = Date.now();
-  if (now - lastRequestTime < 2000) {
+  if (now - lastRequestTime < 3000) {
     return NextResponse.json({ data: [], trading: true, error: "rate_limited" }, { status: 429 });
   }
   lastRequestTime = now;
