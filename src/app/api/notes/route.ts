@@ -10,31 +10,25 @@ export async function GET(request: NextRequest) {
 
   const { searchParams } = new URL(request.url);
   const stockCode = searchParams.get("stock_code");
-  const stockDate = searchParams.get("stock_date");
   const stockCodes = searchParams.get("stock_codes"); // 支持批量查询: 逗号分隔的股票代码列表
 
   const client = getSupabaseClient();
 
   let query = client
     .from("stock_notes")
-    .select("id, username, stock_code, stock_date, content, created_at, updated_at")
+    .select("id, username, stock_code, content, created_at, updated_at")
     .eq("username", username)
     .order("updated_at", { ascending: false });
 
-  // 批量查询：按日期 + 多个股票代码
-  if (stockDate && stockCodes) {
+  // 批量查询：多个股票代码
+  if (stockCodes) {
     const codeList = stockCodes.split(",").map((c) => c.trim()).filter(Boolean);
     if (codeList.length > 0) {
-      query = query.eq("stock_date", stockDate).in("stock_code", codeList);
+      query = query.in("stock_code", codeList);
     }
-  } else {
+  } else if (stockCode) {
     // 单个查询
-    if (stockCode) {
-      query = query.eq("stock_code", stockCode);
-    }
-    if (stockDate) {
-      query = query.eq("stock_date", stockDate);
-    }
+    query = query.eq("stock_code", stockCode);
   }
 
   const { data, error } = await query.limit(500);
@@ -53,33 +47,31 @@ export async function POST(request: NextRequest) {
   }
 
   const body = await request.json();
-  const { stock_code, stock_date, content } = body as {
+  const { stock_code, content } = body as {
     stock_code: string;
-    stock_date: string;
     content: string;
   };
 
-  if (!stock_code || !stock_date) {
+  if (!stock_code) {
     return NextResponse.json(
-      { error: "股票代码和日期不能为空" },
+      { error: "股票代码不能为空" },
       { status: 400 }
     );
   }
 
   const client = getSupabaseClient();
 
-  // 使用 upsert 实现保存或更新
+  // 使用 upsert 实现保存或更新（按 username + stock_code 唯一）
   const { data, error } = await client
     .from("stock_notes")
     .upsert(
       {
         username,
         stock_code,
-        stock_date,
         content: content || "",
         updated_at: new Date().toISOString(),
       },
-      { onConflict: "username,stock_code,stock_date" }
+      { onConflict: "username,stock_code" }
     )
     .select()
     .maybeSingle();

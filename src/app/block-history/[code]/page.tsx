@@ -165,13 +165,17 @@ export default function BlockDetailPage() {
   // 预加载所有备注
   useEffect(() => {
     if (data.length > 0 && authenticated && username) {
-      const stockKeyList: Array<{ stockCode: string; stockDate: string }> = [];
+      const stockCodes: string[] = [];
+      const seen = new Set<string>();
       data.forEach((dayData) => {
         dayData.stocks.forEach((stock) => {
-          stockKeyList.push({ stockCode: stock.code, stockDate: dayData.date });
+          if (!seen.has(stock.code)) {
+            seen.add(stock.code);
+            stockCodes.push(stock.code);
+          }
         });
       });
-      preloadNotes(stockKeyList);
+      preloadNotes(stockCodes);
     }
   }, [data, authenticated, username, preloadNotes]);
 
@@ -457,7 +461,7 @@ export default function BlockDetailPage() {
                       </thead>
                       <tbody className="divide-y divide-slate-100">
                         {sortedStocks.map((stock) => {
-                          const note = getNote(stock.code, dayData.date);
+                          const note = getNote(stock.code);
                           const isSelected =
                             selectedStock?.code === stock.code;
                           return (

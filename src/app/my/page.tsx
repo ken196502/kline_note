@@ -1,15 +1,35 @@
 "use client";
 
+import { useState, useEffect, useCallback } from "react";
 import { toast } from "sonner";
 import { EditDatePanel } from "@/components/edit-date-panel";
 import { StockDetailPanel } from "@/components/stock-detail-panel";
 import { BlockHistoryList } from "@/components/block-history-list";
 import { BlockSidebar } from "@/components/block-sidebar";
 import { useMyPageState } from "@/hooks/use-my-page-state";
+import { useNotes } from "@/hooks/use-notes";
 import { BroadcastHeader } from "@/components/broadcast-header";
 
 export default function MyPage() {
   const state = useMyPageState();
+  const { getNote, saveNote, preloadNotes } = useNotes();
+
+  // 预加载所有备注
+  useEffect(() => {
+    if (state.historyData.length > 0 && state.authenticated && state.username) {
+      const stockCodes: string[] = [];
+      const seen = new Set<string>();
+      state.historyData.forEach((group) => {
+        group.stocks.forEach((stock) => {
+          if (!seen.has(stock.code)) {
+            seen.add(stock.code);
+            stockCodes.push(stock.code);
+          }
+        });
+      });
+      preloadNotes(stockCodes);
+    }
+  }, [state.historyData, state.authenticated, state.username, preloadNotes]);
 
   // ===== 编辑日期模式 =====
   if (state.editingDate) {
@@ -160,31 +180,8 @@ export default function MyPage() {
 
         <StockDetailPanel
           selectedStock={state.selectedStock}
-          getNote={(code, date) => {
-            const group = state.historyData.find((g) => g.date === date);
-            const stock = group?.stocks.find((s) => s.code === code);
-            return stock?.remark || "";
-          }}
-          saveNote={async (code, date, content) => {
-            const group = state.historyData.find((g) => g.date === date);
-            if (group?.customDateId) {
-              await state.updateRemark(group.customDateId, code, content);
-              state.setHistoryData((prev) =>
-                prev.map((g) =>
-                  g.date === date
-                    ? {
-                        ...g,
-                        stocks: g.stocks.map((s) =>
-                          s.code === code ? { ...s, remark: content } : s
-                        ),
-                      }
-                    : g
-                )
-              );
-              return true;
-            }
-            return false;
-          }}
+          getNote={getNote}
+          saveNote={saveNote}
           formatDate={state.formatDate}
           username={state.username}
           noteHeightClass="h-24"

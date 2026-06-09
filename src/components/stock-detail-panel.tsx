@@ -29,10 +29,10 @@ interface StockDetailPanelProps {
   selectedStock: StockDetailInfo | null;
 
   /** 获取备注内容 */
-  getNote: (stockCode: string, stockDate: string) => string | undefined;
+  getNote: (stockCode: string) => string | undefined;
 
   /** 保存备注 */
-  saveNote: (stockCode: string, stockDate: string, content: string) => Promise<boolean | void>;
+  saveNote: (stockCode: string, content: string) => Promise<boolean | void>;
 
   /** 格式化日期 */
   formatDate: (dateStr: string) => string;
@@ -151,7 +151,7 @@ export function StockDetailPanel({
   // 备注编辑相关
   const startEditing = useCallback(() => {
     if (!selectedStock) return;
-    const existingNote = getNote(selectedStock.code, selectedStock.date);
+    const existingNote = getNote(selectedStock.code);
     setNoteContent(existingNote || "");
     setEditingNote(true);
   }, [selectedStock, getNote]);
@@ -159,7 +159,7 @@ export function StockDetailPanel({
   const handleSaveNote = async () => {
     if (!selectedStock || !username) return;
     setSavingNote(true);
-    await saveNote(selectedStock.code, selectedStock.date, noteContent);
+    await saveNote(selectedStock.code, noteContent);
     setEditingNote(false);
     setNoteContent("");
     setSavingNote(false);
@@ -241,7 +241,7 @@ export function StockDetailPanel({
                 <span className="text-[10px] text-slate-400 ml-auto">点击编辑</span>
               </div>
               <div className="flex-1 min-h-0 overflow-y-auto text-sm text-slate-600">
-                {getNote(selectedStock.code, selectedStock.date) || (
+                {getNote(selectedStock.code) || (
                   <span className="text-slate-400">暂无备注</span>
                 )}
               </div>
