@@ -116,7 +116,7 @@ export function useStockChanges({
     }
   }, [changes, ttsEnabled]);
 
-  const fetchChanges = useCallback(async () => {
+  const fetchChanges = useCallback(async (showLoading = true) => {
     // 冷却：距离上次请求不足 3 秒则跳过
     const now = Date.now();
     if (now - lastFetchRef.current < 3000) return;
@@ -128,7 +128,7 @@ export function useStockChanges({
     }
 
     lastFetchRef.current = now;
-    setLoading(true);
+    if (showLoading) setLoading(true);
     try {
       const codesParam = codes.join(",");
       const res = await fetch(`/api/stock-changes?codes=${encodeURIComponent(codesParam)}`);
@@ -184,7 +184,7 @@ export function useStockChanges({
       if (!timerRef.current) {
         timerRef.current = setInterval(() => {
           if (isInTradingSession()) {
-            fetchChanges();
+            fetchChanges(false);
           } else {
             setTrading(false);
             setChanges([]);
