@@ -607,9 +607,19 @@ export function useMyPageState() {
         if (seen.has(code)) continue;
         seen.add(code);
         const stock = allStocks.find((s) => s.code === code);
+        // 名称优先级：historyData 中的名称 > globalBroadcastItems 已有名称 > 异动数据名称 > code
+        const existingItem = globalBroadcastItems.find((i) => i.code === code);
+        const changeItem = stockChanges.find((i) => i.code === code);
+        const name = stock?.name || existingItem?.name || changeItem?.name || code;
+        // 确保名称不是纯代码数字（6位数字说明未获取到真实名称，用非代码名称覆盖）
+        const finalName = /^\d{6}$/.test(name)
+          ? (existingItem?.name && !/^\d{6}$/.test(existingItem.name) ? existingItem.name
+            : changeItem?.name && !/^\d{6}$/.test(changeItem.name) ? changeItem.name
+            : name)
+          : name;
         newItems.push({
           code,
-          name: stock?.name || code,
+          name: finalName,
           blockName: stock?.sourceBlockName || selectedBlock.name,
         });
       }
@@ -620,7 +630,7 @@ export function useMyPageState() {
     }
     setEditMode(false);
     setCheckedStocks(new Set());
-  }, [checkedStocks, selectedBlock, historyData, globalBroadcastItems, saveGlobalBroadcast]);
+  }, [checkedStocks, selectedBlock, historyData, globalBroadcastItems, saveGlobalBroadcast, stockChanges]);
 
   const formatDate = (dateStr: string) => {
     const date = parseISO(dateStr);

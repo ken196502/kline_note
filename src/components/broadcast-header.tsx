@@ -201,7 +201,15 @@ export function BroadcastHeader({
           {[...checkedStocks].map((code) => {
             const bis = broadcastItems.filter((i) => i.code === code);
             const stock = historyData.flatMap((g) => g.stocks).find((s) => s.code === code);
-            const name = bis[0]?.name || stock?.name || code;
+            const changeItem = stockChanges.find((i) => i.code === code);
+            // 名称优先级：broadcastItems 已有名称 > historyData 名称 > 异动数据名称 > code
+            const rawName = bis[0]?.name || stock?.name || changeItem?.name || code;
+            // 如果名称是纯数字代码，尝试用非代码名称覆盖
+            const name = /^\d{6}$/.test(rawName)
+              ? (stock?.name && !/^\d{6}$/.test(stock.name) ? stock.name
+                : changeItem?.name && !/^\d{6}$/.test(changeItem.name) ? changeItem.name
+                : bis.find(bi => !/^\d{6}$/.test(bi.name))?.name || rawName)
+              : rawName;
             const blockNames = [...new Set(bis.map((bi) => bi.blockName).filter(Boolean))];
             return (
               <span key={code} className="text-[10px] font-bold text-slate-600 mr-1.5">
