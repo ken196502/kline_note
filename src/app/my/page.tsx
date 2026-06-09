@@ -153,8 +153,8 @@ export default function MyPage() {
           }}
           editMode={state.editMode}
           checkedStocks={state.checkedStocks}
-          broadcastStocks={state.broadcastStocks}
-          broadcastItems={state.broadcastItems}
+          broadcastStocks={new Set(state.globalBroadcastItems.map((i) => i.code))}
+          broadcastItems={state.globalBroadcastItems}
           onToggleStockCheck={state.toggleStockCheck}
         />
 
