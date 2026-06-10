@@ -204,12 +204,21 @@ export function useStockChanges({
       checkAndStart();
     }, 60000);
 
+    // tab 恢复可见时立即刷新数据
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible" && enabled && isInTradingSession()) {
+        fetchChanges();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+
     return () => {
       if (timerRef.current) {
         clearInterval(timerRef.current);
         timerRef.current = null;
       }
       clearInterval(checkTimer);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
     };
   }, [enabled, intervalMs, fetchChanges]);
 
