@@ -27,9 +27,8 @@ export function TimePreviewChart({
       canvas.height = height * 2;
       ctx.scale(2, 2);
 
-      // 清空
-      ctx.fillStyle = "#ffffff";
-      ctx.fillRect(0, 0, width, height);
+      // 清空（透明背景，由 CSS 控制）
+      ctx.clearRect(0, 0, width, height);
 
       // 过滤有效数据
       const validData = data.filter((v) => v !== null && !isNaN(v));
@@ -66,7 +65,7 @@ export function TimePreviewChart({
         ctx.beginPath();
         ctx.moveTo(1, zeroY);
         ctx.lineTo(width - 1, zeroY);
-        ctx.strokeStyle = "rgba(0, 0, 0, 0.1)";
+        ctx.strokeStyle = "rgba(128, 128, 128, 0.3)";
         ctx.lineWidth = 0.5;
         ctx.setLineDash([2, 2]);
         ctx.stroke();
@@ -159,7 +158,7 @@ export function TimePreviewChart({
     );
   }
 
-  return <canvas ref={canvasRef} className="w-30 h-10" />;
+  return <canvas ref={canvasRef} className="w-30 h-10 bg-white dark:bg-slate-900" />;
 }
 
 /**
@@ -191,8 +190,8 @@ export function TimePreviewChartLarge({
       canvas.height = height * 2;
       ctx.scale(2, 2);
 
-      ctx.fillStyle = "#ffffff";
-      ctx.fillRect(0, 0, width, height);
+      // 清空（透明背景，由 CSS 控制）
+      ctx.clearRect(0, 0, width, height);
 
       // 过滤有效数据用于计算范围
       const validData = data.filter(
@@ -259,7 +258,7 @@ export function TimePreviewChartLarge({
         ctx.beginPath();
         ctx.moveTo(chartLeft, zeroY);
         ctx.lineTo(chartRight, zeroY);
-        ctx.strokeStyle = "rgba(0, 0, 0, 0.12)";
+        ctx.strokeStyle = "rgba(128, 128, 128, 0.25)";
         ctx.lineWidth = 1;
         ctx.setLineDash([4, 4]);
         ctx.stroke();
@@ -432,12 +431,12 @@ export function TimePreviewChartLarge({
   const totalPoints = data.length;
 
   return (
-    <div className="relative w-full h-full">
+    <div className="relative w-full h-full bg-white dark:bg-slate-900">
       <canvas ref={canvasRef} className="w-full h-full" />
       {onRefresh && (
         <button
           onClick={onRefresh}
-          className="absolute top-1 right-1 p-1 rounded hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors"
+          className="absolute top-1 right-1 p-1 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
           title="刷新分时"
         >
           <RefreshCw className="w-3.5 h-3.5" />
