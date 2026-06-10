@@ -240,7 +240,7 @@ export function StockDetailPanel({
                 </span>
                 <span className="text-[10px] text-slate-400 ml-auto">点击编辑</span>
               </div>
-              <div className="flex-1 min-h-0 overflow-y-auto text-sm text-slate-600">
+              <div className="flex-1 min-h-0 overflow-y-auto text-sm text-slate-600 whitespace-pre-wrap">
                 {getNote(selectedStock.code) || (
                   <span className="text-slate-400">暂无备注</span>
                 )}
