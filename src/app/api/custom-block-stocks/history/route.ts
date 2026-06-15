@@ -14,6 +14,7 @@ interface StockDayData {
   hasPrice: boolean;
   remark?: string;
   nameColor?: string;
+  daysInBlock?: number;
 }
 
 interface DayGroup {
@@ -189,6 +190,18 @@ export async function GET(request: NextRequest) {
     }
   }
 
+  // 计算每只股票在板块中出现的日期数
+  const stockDaysCount = new Map<string, number>();
+  for (const [, dateStocksList] of stocksByDateId) {
+    const seenInDate = new Set<string>();
+    for (const entry of dateStocksList) {
+      if (!seenInDate.has(entry.code)) {
+        seenInDate.add(entry.code);
+        stockDaysCount.set(entry.code, (stockDaysCount.get(entry.code) || 0) + 1);
+      }
+    }
+  }
+
   // 组装返回数据（按 custom_date_stocks.sort_order 排序）
   const result: DayGroup[] = [];
 
@@ -217,6 +230,7 @@ export async function GET(request: NextRequest) {
         hasPrice,
         remark: entry.remark,
         nameColor: entry.nameColor,
+        daysInBlock: stockDaysCount.get(entry.code) || 1,
       });
     }
 

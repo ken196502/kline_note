@@ -36,6 +36,7 @@ export interface DateStockItem {
   hasPrice?: boolean;
   remark?: string;
   nameColor?: string; // 股票名称字体颜色
+  daysInBlock?: number; // 该股票在板块中录入的天数
 }
 
 interface DateStockGroupProps {
@@ -251,6 +252,12 @@ export function DateStockGroup({
                 editMode && !isChecked && "opacity-40 bg-slate-50 border-slate-300 border-dashed",
               )}
             >
+              {/* 板块录入天数 - 右上角灰色小字 */}
+              {stock.daysInBlock != null && stock.daysInBlock > 0 && (
+                <span className="absolute top-0 right-0.5 text-[9px] text-slate-300 leading-none select-none">
+                  {stock.daysInBlock}
+                </span>
+              )}
               {/* 编辑模式勾选指示器 */}
               {editMode && (
                 <div className="flex items-center pl-1.5 pr-0.5">
