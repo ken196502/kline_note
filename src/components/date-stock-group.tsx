@@ -254,7 +254,7 @@ export function DateStockGroup({
             >
               {/* 板块录入天数 - 右上角灰色小字 */}
               {stock.daysInBlock != null && stock.daysInBlock > 0 && (
-                <span className="absolute top-0 right-0.5 text-[9px] text-slate-500 leading-none select-none font-medium">
+                <span className="absolute top-0 right-0.5 text-[9px] text-slate-500 leading-none select-none">
                   {stock.daysInBlock}
                 </span>
               )}
