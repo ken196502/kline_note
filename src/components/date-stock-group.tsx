@@ -86,6 +86,8 @@ interface DateStockGroupProps {
   broadcastStocks?: Set<string>;
   broadcastItems?: { code: string; name: string; blockName: string }[];
   onToggleStockCheck?: (dateId: number, stockCode: string) => void;
+  /** 筛选：只显示 daysInBlock 满足条件的卡片，undefined 表示不筛选 */
+  filterDaysInBlock?: { min: number; gte: boolean };
 }
 
 export function DateStockGroup({
@@ -115,8 +117,17 @@ export function DateStockGroup({
   broadcastStocks = new Set(),
   broadcastItems = [],
   onToggleStockCheck,
+  filterDaysInBlock,
 }: DateStockGroupProps) {
   const isSelected = (code: string) => selectedCode === code && selectedDate === date;
+
+  // 根据 daysInBlock 筛选
+  const visibleStocks = filterDaysInBlock != null
+    ? stocks.filter((s) => {
+        const d = s.daysInBlock ?? 0;
+        return filterDaysInBlock.gte ? d >= filterDaysInBlock.min : d === filterDaysInBlock.min;
+      })
+    : stocks;
 
   // 删除日期二次确认
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
@@ -220,7 +231,7 @@ export function DateStockGroup({
       {/* 该日期下的股票列表 - 支持拖动排序 */}
       {!collapsed && (
         <div className="flex flex-wrap gap-1">
-          {stocks.map((stock) => {
+          {visibleStocks.map((stock) => {
             const isChecked = checkedStocks.has(stock.code);
             return (
             <div

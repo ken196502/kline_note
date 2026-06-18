@@ -4,12 +4,20 @@ import { useState } from "react";
 import {
   Plus,
   X,
+  Filter,
 } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import { zhCN } from "date-fns/locale";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Slider } from "@/components/ui/slider";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import { DateStockGroup, type DateStockItem } from "@/components/date-stock-group";
 import type { CustomDate } from "@/types/custom-date";
@@ -112,6 +120,10 @@ export function BlockHistoryList({
 }: BlockHistoryListProps) {
   const [addingDate, setAddingDate] = useState(false);
   const [newDateValue, setNewDateValue] = useState("");
+  // 筛选状态
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [filterEnabled, setFilterEnabled] = useState(false);
+  const [filterDays, setFilterDays] = useState(1);
 
   const formatDate = (dateStr: string) => {
     const date = parseISO(dateStr);
@@ -191,6 +203,44 @@ export function BlockHistoryList({
           {/* 右侧操作按钮 - 非编辑模式显示 */}
           {!editMode && (
           <>
+            <Popover onOpenChange={(open) => setFilterOpen(open)}>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className={cn("h-6 px-2 text-[11px]", filterOpen && "border-orange-400 text-orange-600")}
+                >
+                  <Filter className="w-3 h-3 mr-1" />
+                  筛选
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent align="end" className="w-[180px] p-3">
+                <div className="flex items-center gap-2 mb-3">
+                  <Checkbox
+                    checked={filterEnabled}
+                    onCheckedChange={(checked) => setFilterEnabled(checked === true)}
+                    className="h-3.5 w-3.5"
+                  />
+                  <span className="text-xs text-slate-600 select-none">{filterEnabled ? "≥" : "="}</span>
+                  <span className="text-sm font-semibold text-slate-800 tabular-nums w-4 text-center">
+                    {filterDays}
+                  </span>
+                  <span className="text-xs text-slate-500 select-none">天</span>
+                </div>
+                <Slider
+                  min={1}
+                  max={10}
+                  step={1}
+                  value={[filterDays]}
+                  onValueChange={(v) => setFilterDays(v[0])}
+                  className="w-full"
+                />
+                <div className="flex justify-between mt-1">
+                  <span className="text-[10px] text-slate-400">1</span>
+                  <span className="text-[10px] text-slate-400">10</span>
+                </div>
+              </PopoverContent>
+            </Popover>
             <Button
               variant="outline"
               size="sm"
@@ -266,6 +316,7 @@ export function BlockHistoryList({
                   broadcastStocks={broadcastStocks}
                   broadcastItems={broadcastItems}
                   onToggleStockCheck={onToggleStockCheck}
+                  filterDaysInBlock={filterOpen ? { min: filterDays, gte: filterEnabled } : undefined}
                 />
               ))}
           </div>
