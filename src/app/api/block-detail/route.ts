@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import type { BlockData, StockData } from "@/types/block-data";
+import type { ApiBlock, BlockData, StockData } from "@/types/block-data";
 import {
   fetchFromApi,
   transformBlockData,
@@ -52,12 +52,52 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  // 限制抓取数量，最多抓取 days 个缺失日期
-  const datesToFetchLimited = datesToFetch.slice(0, days);
+  // 辅助函数：从 DB 行构建 BlockData
+  function buildBlockData(block: Record<string, unknown>): BlockData {
+    return {
+      date: block.date as string,
+      code: block.code as string,
+      name: block.name as string,
+      change: block.change as number,
+      limitUpNum: block.limit_up_num as number,
+      continuousPlateNum: block.continuous_plate_num as number,
+      high: (block.high as string) || "",
+      highNum: block.high_num as number,
+      days: block.days as number,
+    };
+  }
+
+  // 辅助函数：从 DB 行构建 StockData
+  function buildStockData(s: Record<string, unknown>): StockData {
+    return {
+      date: s.date as string,
+      blockCode: s.block_code as string,
+      blockName: s.block_name as string,
+      code: s.stock_code as string,
+      name: s.stock_name as string,
+      latest: s.latest as number,
+      changeRate: s.change_rate as number,
+      continueNum: s.continue_num as number,
+      high: (s.high as string) || "",
+      highDays: s.high_days as number,
+      firstLimitUpTime: (s.first_limit_up_time as string) || "",
+      lastLimitUpTime: (s.last_limit_up_time as string) || "",
+      reasonType: (s.reason_type as string) || "",
+      reasonInfo: (s.reason_info as string) || "",
+      isNew: (s.is_new as number) || 0,
+      isSt: (s.is_st as number) || 0,
+      marketType: (s.market_type as string) || "",
+      timePreview: typeof s.time_preview === 'string' ? JSON.parse(s.time_preview) as number[] : s.time_preview as number[] | undefined,
+    };
+  }
 
   const result: { date: string; block: BlockData; stocks: StockData[] }[] = [];
 
   // 批量从数据库读取已有数据
+  // 记录哪些日期有完整 stocks、哪些日期 stocks 缺失（需要回退 API 抓取）
+  const datesWithFullData: string[] = [];
+  const datesNeedingFetch: string[] = [...datesToFetch]; // 原本就缺失的日期
+
   if (datesWithData.length > 0) {
     // 批量查询板块数据
     const { data: cachedBlocks } = await client
@@ -73,49 +113,34 @@ export async function GET(request: NextRequest) {
       .eq("block_code", code)
       .in("date", datesWithData);
 
-    // 按日期组织数据
     for (const date of datesWithData) {
       const block = cachedBlocks?.find((b) => b.date === date);
       if (!block) continue;
 
-      const blockData: BlockData = {
-        date: block.date as string,
-        code: block.code as string,
-        name: block.name as string,
-        change: block.change as number,
-        limitUpNum: block.limit_up_num as number,
-        continuousPlateNum: block.continuous_plate_num as number,
-        high: (block.high as string) || "",
-        highNum: block.high_num as number,
-        days: block.days as number,
-      };
+      const dateStocks = (cachedStocks || []).filter((s) => s.date === date);
 
-      const stocks: StockData[] = (cachedStocks || [])
-        .filter((s) => s.date === date)
-        .map((s) => ({
-          date: s.date as string,
-          blockCode: s.block_code as string,
-          blockName: s.block_name as string,
-          code: s.stock_code as string,
-          name: s.stock_name as string,
-          latest: s.latest as number,
-          changeRate: s.change_rate as number,
-          continueNum: s.continue_num as number,
-          high: (s.high as string) || "",
-          highDays: s.high_days as number,
-          firstLimitUpTime: (s.first_limit_up_time as string) || "",
-          lastLimitUpTime: (s.last_limit_up_time as string) || "",
-          reasonType: (s.reason_type as string) || "",
-          reasonInfo: (s.reason_info as string) || "",
-          isNew: (s.is_new as number) || 0,
-          isSt: (s.is_st as number) || 0,
-          marketType: (s.market_type as string) || "",
-          timePreview: typeof s.time_preview === 'string' ? JSON.parse(s.time_preview) as number[] : s.time_preview as number[] | undefined,
-        }));
-
-      result.push({ date, block: blockData, stocks });
+      if (dateStocks.length > 0) {
+        // 有完整数据，直接使用
+        result.push({
+          date,
+          block: buildBlockData(block),
+          stocks: dateStocks.map(buildStockData),
+        });
+        datesWithFullData.push(date);
+      } else {
+        // stocks 缺失，先展示板块信息（空 stocks），同时标记需要 API 回补
+        result.push({
+          date,
+          block: buildBlockData(block),
+          stocks: [],
+        });
+        datesNeedingFetch.push(date);
+      }
     }
   }
+
+  // 限制抓取数量，最多抓取 days 个缺失日期
+  const datesToFetchLimited = datesNeedingFetch.slice(0, days);
 
   // 抓取缺失的日期数据（逐日抓取，避免被封）
   for (const date of datesToFetchLimited) {
@@ -123,7 +148,7 @@ export async function GET(request: NextRequest) {
       const apiData = await fetchFromApi(date);
 
       if (apiData.status_code === 0 && apiData.data) {
-        const targetBlock = apiData.data.find((b) => b.code === code);
+        const targetBlock = apiData.data.find((b: ApiBlock) => b.code === code);
 
         if (targetBlock) {
           const block = transformBlockData(date, targetBlock);
@@ -169,7 +194,13 @@ export async function GET(request: NextRequest) {
             }
           }
 
-          result.push({ date, block, stocks });
+          // 替换 result 中该日期的条目（之前可能是空 stocks）
+          const existingIdx = result.findIndex((r) => r.date === date);
+          if (existingIdx >= 0) {
+            result[existingIdx] = { date, block, stocks };
+          } else {
+            result.push({ date, block, stocks });
+          }
         }
       }
     } catch (error) {

@@ -77,14 +77,19 @@ export async function GET(request: NextRequest) {
           timePreview: typeof s.time_preview === 'string' ? JSON.parse(s.time_preview) as number[] : s.time_preview as number[] | undefined,
         }));
 
-        result.push({
-          date: currentDate,
-          blocks,
-          stocks,
-        });
-        loadedDays++;
-        currentDate = getPrevTradingDay(currentDate);
-        continue;
+        // stocks 为空时回退到 API 抓取（板块数据在但个股数据丢失了）
+        if (stocks.length === 0) {
+          // 回退到 API 抓取逻辑（跳过 continue，走下面的 API 分支）
+        } else {
+          result.push({
+            date: currentDate,
+            blocks,
+            stocks,
+          });
+          loadedDays++;
+          currentDate = getPrevTradingDay(currentDate);
+          continue;
+        }
       }
 
       // 数据库没有数据，从API获取
