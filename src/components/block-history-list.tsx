@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import {
   Plus,
   X,
@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import { DateStockGroup, type DateStockItem } from "@/components/date-stock-group";
+import { StockHistorySearch } from "@/components/stock-history-search";
 import type { CustomDate } from "@/types/custom-date";
 
 // 历史行情日期分组类型
@@ -139,6 +140,27 @@ export function BlockHistoryList({
     setNewDateValue("");
   };
 
+  const handleJumpToDate = useCallback(
+    (stockCode: string, date: string) => {
+      if (collapsedDates.has(date)) {
+        onToggleCollapse(date);
+      }
+      const group = historyData.find((g) => g.date === date);
+      const stock = group?.stocks.find((s) => s.code === stockCode);
+      if (!stock) return;
+
+      // 等待折叠展开后再滚动和选中
+      requestAnimationFrame(() => {
+        setTimeout(() => {
+          const el = document.getElementById(`history-date-${date}`);
+          el?.scrollIntoView({ behavior: "smooth", block: "start" });
+          onSelectStock(stock, date);
+        }, 80);
+      });
+    },
+    [collapsedDates, historyData, onToggleCollapse, onSelectStock]
+  );
+
   if (!selectedBlock) {
     return (
       <div className="flex-1 lg:min-w-[40%] lg:border-r lg:border-slate-200 bg-white overflow-y-auto relative">
@@ -203,6 +225,10 @@ export function BlockHistoryList({
           {/* 右侧操作按钮 - 非编辑模式显示 */}
           {!editMode && (
           <>
+            <StockHistorySearch
+              historyData={historyData}
+              onJumpToDate={handleJumpToDate}
+            />
             <Popover onOpenChange={(open) => setFilterOpen(open)}>
               <PopoverTrigger asChild>
                 <Button
