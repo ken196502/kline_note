@@ -185,7 +185,7 @@ export function DateStockGroup({
   };
 
   return (
-    <div id={`history-date-${date}`}>
+    <div id={`history-date-${date}`} className="scroll-mt-10">
       {/* 日期标题 - 可点击折叠 */}
       <div
         className="flex items-center gap-1.5 mb-2 cursor-pointer select-none group"

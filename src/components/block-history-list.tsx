@@ -173,10 +173,9 @@ export function BlockHistoryList({
 
   return (
     <div className="flex-1 lg:min-w-[40%] lg:border-r lg:border-slate-200 bg-white overflow-y-auto relative">
-      {/* 板块内容区域 */}
-      <div className="p-3">
-        {/* 顶部：添加日期按钮 + 操作按钮 */}
-        <div className="flex items-center gap-1.5 mb-2 flex-wrap">
+      {/* 顶部工具栏 - 滚动时置顶 */}
+      <div className="sticky top-0 z-20 bg-white border-b border-slate-100 px-3 py-2">
+        <div className="flex items-center gap-1.5 flex-wrap">
           {/* 添加日期按钮 - 左上角 */}
           {!editMode && (addingDate ? (
             <div className="flex items-center gap-1">
@@ -286,8 +285,10 @@ export function BlockHistoryList({
           </>
           )}
         </div>
+      </div>
 
-        {/* 按日期分组的历史行情 */}
+      {/* 按日期分组的历史行情 */}
+      <div className="p-3 pt-2">
         {historyLoading ? (
           <div className="space-y-4">
             {Array.from({ length: 3 }).map((_, i) => (
