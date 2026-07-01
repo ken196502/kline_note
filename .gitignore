@@ -164,3 +164,4 @@ next-env.d.ts
 scripts/dev.sh
 scripts/start.sh
 supabase/config.toml
+.codegraph
