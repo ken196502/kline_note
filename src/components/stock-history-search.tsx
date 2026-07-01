@@ -3,6 +3,7 @@
 import { useMemo, useState, useRef, useEffect } from "react";
 import { Search, X } from "lucide-react";
 import { format, parseISO } from "date-fns";
+import { pinyin } from "pinyin-pro";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import type { HistoryDayGroup } from "@/components/block-history-list";
@@ -11,6 +12,13 @@ interface StockEntry {
   code: string;
   name: string;
   dates: string[];
+  pinyinInitials: string;
+}
+
+function getPinyinInitials(name: string) {
+  return pinyin(name, { pattern: "first", toneType: "none" })
+    .replace(/\s/g, "")
+    .toLowerCase();
 }
 
 interface StockHistorySearchProps {
@@ -47,6 +55,7 @@ export function StockHistorySearch({
             code: stock.code,
             name: stock.name,
             dates: [group.date],
+            pinyinInitials: getPinyinInitials(stock.name),
           });
         }
       }
@@ -65,7 +74,8 @@ export function StockHistorySearch({
     for (const entry of stockIndex.values()) {
       if (
         entry.code.toLowerCase().includes(q) ||
-        entry.name.toLowerCase().includes(q)
+        entry.name.toLowerCase().includes(q) ||
+        entry.pinyinInitials.includes(q)
       ) {
         results.push(entry);
       }
@@ -120,7 +130,7 @@ export function StockHistorySearch({
             if (query.trim() && !selectedStock) setOpen(true);
           }}
           placeholder="搜索股票"
-          className="h-6 pl-7 pr-6 text-[11px] w-[120px]"
+          className="h-6 pl-7 pr-6 text-[10px] md:text-[10px] placeholder:text-[10px] w-[120px]"
         />
         {query && (
           <button
