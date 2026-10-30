@@ -11,19 +11,25 @@ interface RotationChartProps {
   onSelect: (selection: RotationSelection) => void;
 }
 
-const LANE_WIDTH = 28;
-const BAR_WIDTH = 24;
+const LANE_WIDTH = 20;
+const BAR_WIDTH = 12;
 
 export function RotationChart({ days, selected, onSelect }: RotationChartProps) {
   const viewportRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{ pointerId: number; x: number; scroll: number; moved: boolean } | null>(null);
   const [height, setHeight] = useState(420);
-  const [upperHeight, setUpperHeight] = useState(270);
   const [dragging, setDragging] = useState(false);
   // 最近日期在左侧；加载历史时向右追加，保留当前浏览位置。
-  const maxUp = Math.max(1, ...days.flatMap((day) => day.up.map((block) => block.count)));
-  const maxDown = Math.max(1, ...days.flatMap((day) => day.down.map((block) => block.count)));
+  const visibleDays = useMemo(() => days.map((day) => ({
+    ...day,
+    up: day.up.filter((block) => block.count >= 2),
+    down: day.down.filter((block) => block.count >= 2),
+  })), [days]);
+  const maxUp = Math.max(1, ...visibleDays.flatMap((day) => day.up.map((block) => block.count)));
+  const maxDown = Math.max(1, ...visibleDays.flatMap((day) => day.down.map((block) => block.count)));
+  // 按两侧最大数量分配高度，使用同一比例并充分利用绘图区。
+  const upperHeight = 20 + (height - 30) * maxUp / (maxUp + maxDown);
   const upperZero = upperHeight;
   const lowerZero = upperHeight;
   const lowerHeight = height - lowerZero;
@@ -43,11 +49,7 @@ export function RotationChart({ days, selected, onSelect }: RotationChartProps) 
     if (!container) return;
     const observer = new ResizeObserver(([entry]) => {
       const plotHeight = Math.max(180, entry.contentRect.height - 40);
-      const page = container.closest("main")?.getBoundingClientRect();
-      const top = container.getBoundingClientRect().top + 40;
-      const target = page ? page.top + page.height * 2 / 3 - top : plotHeight * 0.7;
       setHeight(plotHeight);
-      setUpperHeight(Math.max(60, Math.min(plotHeight - 40, target)));
     });
     observer.observe(container);
     return () => observer.disconnect();
@@ -112,7 +114,7 @@ export function RotationChart({ days, selected, onSelect }: RotationChartProps) 
         onPointerLeave={() => { if (!dragRef.current?.moved) dragRef.current = null; }}
       >
         <div className="flex h-full w-max">
-          {days.map((day, dayIndex) => {
+          {visibleDays.map((day, dayIndex) => {
             const width = Math.max(3, day.up.length, day.down.length) * LANE_WIDTH + 12;
             return (
               <section key={day.date} className="shrink-0 border-r border-slate-200 last:border-r-0" style={{ width }} aria-label={`${day.date}行情`}>
@@ -128,7 +130,7 @@ export function RotationChart({ days, selected, onSelect }: RotationChartProps) 
                     const selection = selections.get(key);
                     if (!selection) return null;
                     const active = selected?.date === day.date && selected.direction === direction && selected.block.code === block.code;
-                    const x = 6 + index * LANE_WIDTH;
+                    const x = 6 + index * LANE_WIDTH + (LANE_WIDTH - BAR_WIDTH) / 2;
                     const up = direction === "up";
                     const barHeight = Math.max(2, block.count * scale);
                     const y = up ? upperZero - barHeight : lowerZero;

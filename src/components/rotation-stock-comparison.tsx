@@ -147,9 +147,12 @@ function ComparisonCharts({ stocks, data }: { stocks: RotationStock[]; data: Rec
               const primary = series.code === primaryCode;
               const style = comparisonCandleStyle(primary, candle.close >= candle.open);
               const bodyWidth = Math.max(1, Math.min(primary ? 12 : 16, step * (primary ? 0.62 : 0.9)));
+              const bodyTop = Math.min(y(candle.open), y(candle.close));
+              const bodyBottom = Math.max(y(candle.open), y(candle.close));
               return <g key={candle.date}>
-                <line x1={x(index)} x2={x(index)} y1={y(candle.high)} y2={y(candle.low)} stroke={style.stroke} />
-                <rect x={x(index) - bodyWidth / 2} y={Math.min(y(candle.open), y(candle.close))} width={bodyWidth} height={Math.max(1, Math.abs(y(candle.open) - y(candle.close)))} stroke={style.stroke} fill={style.fill} />
+                <line x1={x(index)} x2={x(index)} y1={y(candle.high)} y2={bodyTop} stroke={style.stroke} strokeWidth={primary ? 1 : 0.75} />
+                <line x1={x(index)} x2={x(index)} y1={bodyBottom} y2={y(candle.low)} stroke={style.stroke} strokeWidth={primary ? 1 : 0.75} />
+                <rect x={x(index) - bodyWidth / 2} y={bodyTop} width={bodyWidth} height={Math.max(1, bodyBottom - bodyTop)} stroke={style.stroke} strokeWidth={primary ? 1 : 0.75} fill={style.fill} />
               </g>;
             })}
           </g>)
