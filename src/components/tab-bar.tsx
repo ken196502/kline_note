@@ -2,7 +2,7 @@
 
 import { usePathname } from "next/navigation";
 import { useRouter } from "next/navigation";
-import { User, TrendingUp } from "lucide-react";
+import { User, TrendingUp, ArrowLeftRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const tabs = [
@@ -11,6 +11,12 @@ const tabs = [
     icon: User,
     path: "/my",
     matchPaths: ["/my"],
+  },
+  {
+    label: "轮动",
+    icon: ArrowLeftRight,
+    path: "/rotation",
+    matchPaths: ["/rotation"],
   },
   {
     label: "行情",
