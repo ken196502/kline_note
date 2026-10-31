@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import { RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -118,10 +117,11 @@ function ComparisonCharts({ stocks, data }: { stocks: RotationComparisonStock[];
     { index: Math.floor((minuteCount - 1) / 2), label: "11:30 / 13:00" },
     { index: minuteCount - 1, label: "15:00" },
   ];
-  const hoverDate = candleHover === null ? null : dates[candleHover];
-  const minuteTime = minuteHover === null ? null : (() => {
+  const hoverDate = dates[candleHover ?? dates.length - 1];
+  const minuteIndex = minuteHover ?? Math.max(0, ...minutes.map((series) => series.values.findLastIndex((value) => value !== null)));
+  const minuteTime = (() => {
     // 在线分时接口含午间两个端点（通常共 242 个点）。
-    const minute = minuteHover <= 120 ? 570 + minuteHover : 780 + minuteHover - 121;
+    const minute = minuteIndex <= 120 ? 570 + minuteIndex : 780 + minuteIndex - 121;
     return `${String(Math.floor(minute / 60)).padStart(2, "0")}:${String(minute % 60).padStart(2, "0")}`;
   })();
   const chartEmpty = (kind: "candle" | "minute") => <div className="flex min-h-0 flex-1 items-center justify-center text-xs text-slate-400">
@@ -156,13 +156,13 @@ function ComparisonCharts({ stocks, data }: { stocks: RotationComparisonStock[];
             })}
           </g>)
         } /> : chartEmpty("candle")}
-        {hoverDate && <div className="max-h-20 shrink-0 overflow-y-auto px-3 pb-1 text-[10px] text-slate-500">
-          <span>{hoverDate}</span>
+        <div className="h-20 shrink-0 overflow-y-auto px-3 pb-1 text-[10px] leading-4 text-slate-500">
+          <span>{hoverDate ?? "暂无K线数据"}</span>
           {stocks.map((stock) => {
             const candle = candles.find((series) => series.code === stock.code)?.candles.find((item) => item.date === hoverDate);
-            return <div key={stock.code}>{stock.name} {candle ? `开 ${rate(candle.open)} 高 ${rate(candle.high)} 低 ${rate(candle.low)} 收 ${rate(candle.close)}` : "无当日数据"}</div>;
+            return <div key={stock.code} className="flex items-center gap-1.5 whitespace-nowrap"><span aria-hidden="true" className="size-2 shrink-0 rounded-full" style={{ backgroundColor: stock.color }} />{stock.name} {candle ? `开 ${rate(candle.open)} 高 ${rate(candle.high)} 低 ${rate(candle.low)} 收 ${rate(candle.close)}` : "无当日数据"}</div>;
           })}
-        </div>}
+        </div>
       </section>
       <section aria-label="分时对比" className="flex min-h-0 flex-[2] flex-col">
         <h3 className="shrink-0 px-3 pt-2 text-xs font-semibold text-slate-600">最新分时</h3>
@@ -186,12 +186,12 @@ function ComparisonCharts({ stocks, data }: { stocks: RotationComparisonStock[];
             </g>;
           })
         } /> : chartEmpty("minute")}
-        {minuteHover !== null && <div className="max-h-16 shrink-0 overflow-y-auto px-3 pb-1 text-[10px] text-slate-500">
-          {minuteTime} {stocks.map((stock) => {
-            const value = data[stock.code]?.minutes[minuteHover];
-            return <span key={stock.code} className="ml-2">{stock.name} {value === null || value === undefined ? "无数据" : rate(value)}</span>;
+        <div className="h-16 shrink-0 overflow-y-auto px-3 pb-1 text-[10px] leading-4 text-slate-500">
+          {minuteValues.length ? minuteTime : "暂无分时数据"} {stocks.map((stock) => {
+            const value = data[stock.code]?.minutes[minuteIndex];
+            return <span key={stock.code} className="ml-2 inline-flex items-center gap-1.5 whitespace-nowrap"><span aria-hidden="true" className="size-2 shrink-0 rounded-full" style={{ backgroundColor: stock.color }} />{stock.name} {value === null || value === undefined ? "无数据" : rate(value)}</span>;
           })}
-        </div>}
+        </div>
       </section>
     </div>
   );
@@ -200,7 +200,6 @@ function ComparisonCharts({ stocks, data }: { stocks: RotationComparisonStock[];
 export function RotationStockComparison({ stocks, open, onOpenChange }: ComparisonProps) {
   const cacheRef = useRef(new Map<string, StockChartData>());
   const [data, setData] = useState<Record<string, StockChartData>>({});
-  const [revision, setRevision] = useState(0);
   useEffect(() => {
     const controller = new AbortController();
     const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(20_000)]);
@@ -256,24 +255,9 @@ export function RotationStockComparison({ stocks, open, onOpenChange }: Comparis
       });
     }
     return () => controller.abort();
-  }, [stocks, revision]);
+  }, [stocks]);
 
   const content = () => stocks.length === 0 ? <div className="flex min-h-0 flex-1 items-center justify-center px-4 text-sm text-slate-400">勾选个股查看 K 线和分时，可多选叠加对比</div> : <>
-    <div className="shrink-0 border-b border-slate-100 px-3 py-2">
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-xs font-semibold text-slate-700">个股对比 · {stocks.length} 只</span>
-        <Button variant="ghost" size="sm" className="h-6 px-2 text-[10px]" onClick={() => {
-          cacheRef.current.clear(); setData({}); setRevision((value) => value + 1);
-        }}><RefreshCw className="size-3" />刷新图表</Button>
-      </div>
-      <p className="mt-1 text-[10px] text-slate-400">点击股票行切换红绿主图；叠加颜色对应榜单圆点，阳线空心、阴线实心</p>
-      {stocks.some((stock) => data[stock.code]?.candleError || data[stock.code]?.minuteError) && <div role="status" className="mt-1 max-h-16 overflow-y-auto text-[10px] text-amber-700">
-        {stocks.map((stock) => {
-          const item = data[stock.code];
-          return item?.candleError || item?.minuteError ? <p key={stock.code}>{stock.name}：{[item.candleError, item.minuteError].filter(Boolean).join("；")}</p> : null;
-        })}
-      </div>}
-    </div>
     <ComparisonCharts stocks={stocks} data={data} />
   </>;
   return <>
