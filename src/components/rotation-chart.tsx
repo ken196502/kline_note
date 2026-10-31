@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent, UIEvent } from "react";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import type { RotationDay, RotationSelection } from "@/types/rotation";
 
@@ -148,22 +149,28 @@ export function RotationChart({ days, selected, onSelect, onLoadMore }: Rotation
                     const y = up ? upperZero - barHeight : lowerZero;
                     const color = up ? "#ef4444" : "#059669";
                     return (
-                      <g
-                        key={key}
-                        role="button"
-                        tabIndex={0}
-                        aria-label={`${day.date} ${block.name} ${up ? "涨停" : "跌停"} ${block.count}只`}
-                        aria-pressed={active}
-                        data-rotation-bar={key}
-                        className="cursor-pointer outline-none [&:focus-visible>rect]:stroke-orange-500 [&:focus-visible>rect]:stroke-2"
-                        onPointerEnter={() => select(selection)}
-                        onFocus={() => select(selection)}
-                        onClick={() => select(selection)}
-                        onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); select(selection); } }}
-                      >
-                        <rect x={x} y={y} width={BAR_WIDTH} height={barHeight} fill={color} opacity={active ? 1 : 0.85} stroke={active ? "#f97316" : "none"} strokeWidth="1" />
-                        <text x={x + BAR_WIDTH / 2} y={y + barHeight / 2} textAnchor="middle" dominantBaseline="central" fill="white" fontSize={Math.min(10, Math.max(2, barHeight - 1))} className="pointer-events-none font-mono font-semibold">{block.count}</text>
-                      </g>
+                      <Tooltip key={key}>
+                        <TooltipTrigger asChild>
+                          <g
+                            role="button"
+                            tabIndex={0}
+                            aria-label={`${day.date} ${block.name} ${up ? "涨停" : "跌停"} ${block.count}只`}
+                            aria-pressed={active}
+                            data-rotation-bar={key}
+                            className="cursor-pointer outline-none [&:focus-visible>rect]:stroke-orange-500 [&:focus-visible>rect]:stroke-2"
+                            onPointerEnter={() => select(selection)}
+                            onFocus={() => select(selection)}
+                            onClick={() => select(selection)}
+                            onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); select(selection); } }}
+                          >
+                            <rect x={x} y={y} width={BAR_WIDTH} height={barHeight} fill={color} opacity={active ? 1 : 0.85} stroke={active ? "#f97316" : "none"} strokeWidth="1" />
+                            <text x={x + BAR_WIDTH / 2} y={y + barHeight / 2} textAnchor="middle" dominantBaseline="central" fill="white" fontSize={Math.min(10, Math.max(2, barHeight - 1))} className="pointer-events-none font-mono font-semibold">{block.count}</text>
+                          </g>
+                        </TooltipTrigger>
+                        <TooltipContent side={up ? "top" : "bottom"} sideOffset={6}>
+                          {block.name}
+                        </TooltipContent>
+                      </Tooltip>
                     );
                   }))}
                 </svg>
