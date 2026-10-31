@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent, UIEvent } from "react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
@@ -21,10 +21,11 @@ export function RotationChart({ days, selected, onSelect, onLoadMore }: Rotation
   const containerRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{ pointerId: number; x: number; scroll: number; moved: boolean } | null>(null);
   const scrollLeftRef = useRef(0);
+  const timelineRef = useRef<{ oldestDate: string; width: number } | null>(null);
   const [height, setHeight] = useState(420);
   const [dragging, setDragging] = useState(false);
-  // 最近日期在左侧；加载历史时向右追加，保留当前浏览位置。
-  const visibleDays = useMemo(() => days.map((day) => ({
+  // 日期从左到右递增，更早的历史数据追加在左侧。
+  const visibleDays = useMemo(() => [...days].sort((a, b) => a.date.localeCompare(b.date)).map((day) => ({
     ...day,
     up: day.up.filter((block) => block.count >= 2),
     down: day.down.filter((block) => block.count >= 2),
@@ -46,6 +47,23 @@ export function RotationChart({ days, selected, onSelect, onLoadMore }: Rotation
       [`${day.date}:${direction}:${block.code}`, { date: day.date, direction, block }] as const
     ))
   )), [days]);
+
+  useLayoutEffect(() => {
+    const viewport = viewportRef.current;
+    const oldestDate = visibleDays[0]?.date;
+    if (!viewport || !oldestDate) return;
+    const previous = timelineRef.current;
+    if (!previous) {
+      viewport.scrollLeft = viewport.scrollWidth - viewport.clientWidth;
+    } else if (oldestDate < previous.oldestDate) {
+      // 左侧插入历史后，保持用户正在浏览的日期位置不变。
+      const addedWidth = viewport.scrollWidth - previous.width;
+      viewport.scrollLeft += addedWidth;
+      if (dragRef.current) dragRef.current.scroll += addedWidth;
+    }
+    scrollLeftRef.current = viewport.scrollLeft;
+    timelineRef.current = { oldestDate, width: viewport.scrollWidth };
+  }, [visibleDays]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -77,9 +95,9 @@ export function RotationChart({ days, selected, onSelect, onLoadMore }: Rotation
 
   const handleScroll = (event: UIEvent<HTMLDivElement>) => {
     const viewport = event.currentTarget;
-    const movingToHistory = viewport.scrollLeft > scrollLeftRef.current;
+    const movingToHistory = viewport.scrollLeft < scrollLeftRef.current;
     scrollLeftRef.current = viewport.scrollLeft;
-    if (movingToHistory && viewport.scrollWidth - viewport.clientWidth - viewport.scrollLeft <= 120) {
+    if (movingToHistory && viewport.scrollLeft <= 120) {
       onLoadMore();
     }
   };
@@ -117,7 +135,7 @@ export function RotationChart({ days, selected, onSelect, onLoadMore }: Rotation
         aria-label="板块轮动柱状图，可左右拖动或使用方向键滚动"
         tabIndex={0}
         className={cn("min-w-0 flex-1 overflow-x-auto overflow-y-hidden overscroll-x-contain select-none outline-none focus-visible:ring-2 focus-visible:ring-orange-400", dragging ? "cursor-grabbing" : "cursor-grab")}
-        style={{ touchAction: "pan-x" }}
+        style={{ touchAction: "pan-x", overflowAnchor: "none" }}
         onScroll={handleScroll}
         onPointerDown={startDrag}
         onPointerMove={moveDrag}
