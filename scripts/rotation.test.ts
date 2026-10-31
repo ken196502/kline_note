@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { rankRotationBlocks, rankRotationStocks, shiftRotationDate } from "../src/lib/rotation";
-import { groupDownStocks } from "../src/lib/rotation-data";
+import { groupRotationStocks } from "../src/lib/rotation-data";
 import type { RotationStock } from "../src/types/rotation";
 
 const stock = (code: string, continueNum: number | null): RotationStock => ({ code, name: code, continueNum, changeRate: -10 });
@@ -17,18 +17,16 @@ test("正负板块都按数量降序，不修改原始输入", () => {
   assert.equal(blocks[0].count, 1);
 });
 
-test("跌停归属采用最近日期的全部板块，忽略更旧归属，未匹配归入未分类", () => {
+test("涨跌停采用全部自定义板块归属，重复记录不重复计数，未匹配归入未分类", () => {
   const memberships = [
-    { stock_code: "000001", date: "2026-10-20", block_code: "old", block_name: "旧板块" },
-    { stock_code: "000001", date: "2026-10-28", block_code: "a", block_name: "板块A" },
-    { stock_code: "000001", date: "2026-10-28", block_code: "b", block_name: "板块B" },
-    { stock_code: "000001", date: "2026-10-28", block_code: "a", block_name: "板块A" },
-    { stock_code: "000002", date: "2026-10-27", block_code: "a", block_name: "板块A" },
+    { stock_code: "000001", block_code: "a", block_name: "板块A" },
+    { stock_code: "000001", block_code: "b", block_name: "板块B" },
+    { stock_code: "000001", block_code: "a", block_name: "板块A" },
+    { stock_code: "000002", block_code: "a", block_name: "板块A" },
   ];
-  const result = groupDownStocks([stock("000001", null), stock("000001", null), stock("000002", 2), stock("000003", null)], memberships);
+  const result = groupRotationStocks([stock("000001", null), stock("000001", null), stock("000002", 2), stock("000003", null)], memberships);
   assert.deepEqual(result.map((block) => [block.code, block.count]), [["a", 2], ["b", 1], ["unclassified", 1]]);
   assert.equal(result[0].stocks[0].code, "000002");
-  assert.equal(result.some((block) => block.code === "old"), false);
 });
 
 test("历史游标跨月与闰年日期正确，不重复最后交易日", () => {

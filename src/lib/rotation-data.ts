@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getSupabaseClient } from "@/storage/database/supabase-client";
-import { rankRotationBlocks } from "@/lib/rotation";
+import { rankRotationBlocks, rankRotationStocks } from "@/lib/rotation";
 import type { RotationBlock, RotationDay, RotationStock } from "@/types/rotation";
 
 const stockSchema = z.object({
@@ -27,9 +27,11 @@ const cachedStockSchema = z.object({
   stock_code: z.string(), stock_name: z.string(), block_code: z.string(),
   change_rate: z.number().nullish(), continue_num: z.number().nullish(),
 });
-const membershipSchema = z.object({
-  date: z.string(), stock_code: z.string(), block_code: z.string(), block_name: z.string(),
-});
+interface RotationMembership {
+  stock_code: string;
+  block_code: string;
+  block_name: string;
+}
 
 function toStock(stock: z.infer<typeof stockSchema>): RotationStock {
   return { code: stock.code, name: stock.name, changeRate: stock.change_rate ?? 0, continueNum: stock.continue_num ?? null };
@@ -102,23 +104,18 @@ async function loadDownStocks(date: string): Promise<RotationStock[]> {
   return stocks;
 }
 
-export function groupDownStocks(
-  stocks: RotationStock[], memberships: z.infer<typeof membershipSchema>[],
+export function groupRotationStocks(
+  stocks: RotationStock[], memberships: RotationMembership[],
 ): RotationBlock[] {
-  // 每只股票采用截至所选日期的最近一次归属，同一天的多个板块均保留。
-  const latest = new Map<string, { date: string; blocks: Map<string, string> }>();
+  const stockBlocks = new Map<string, Map<string, string>>();
   for (const membership of memberships) {
-    const previous = latest.get(membership.stock_code);
-    if (!previous || membership.date > previous.date) {
-      latest.set(membership.stock_code, { date: membership.date, blocks: new Map([[membership.block_code, membership.block_name]]) });
-    } else if (membership.date === previous.date) {
-      previous.blocks.set(membership.block_code, membership.block_name);
-    }
+    const blocks = stockBlocks.get(membership.stock_code) ?? new Map<string, string>();
+    blocks.set(membership.block_code, membership.block_name);
+    stockBlocks.set(membership.stock_code, blocks);
   }
   const groups = new Map<string, RotationBlock>();
-  const uniqueStocks = new Map(stocks.map((stock) => [stock.code, stock]));
-  for (const stock of uniqueStocks.values()) {
-    const blocks = latest.get(stock.code)?.blocks ?? new Map([["unclassified", "未分类"]]);
+  for (const stock of rankRotationStocks(stocks)) {
+    const blocks = stockBlocks.get(stock.code) ?? new Map([["unclassified", "未分类"]]);
     for (const [code, name] of blocks) {
       const block = groups.get(code) ?? { code, name, count: 0, stocks: [] };
       block.stocks.push(stock);
@@ -129,27 +126,38 @@ export function groupDownStocks(
   return rankRotationBlocks([...groups.values()]);
 }
 
-async function loadMemberships(date: string, stocks: RotationStock[], client: SupabaseClient | null) {
-  const memberships: z.infer<typeof membershipSchema>[] = [];
-  if (stocks.length === 0) return memberships;
-  if (!client) throw new Error("历史板块归属暂不可用，跌停股票已归入未分类");
-  const codes = [...new Set(stocks.map((stock) => stock.code))];
+export async function loadCustomMemberships(username: string) {
+  const client = getSupabaseClient();
+  const blocks: { id: number; name: string }[] = [];
+  const blockSchema = z.object({ id: z.number(), name: z.string() });
   for (let offset = 0; ; offset += 1000) {
-    const result = await client.from("stock_limit_up")
-      .select("date,stock_code,block_code,block_name")
-      .in("stock_code", codes).lte("date", date)
-      .order("date", { ascending: false }).order("stock_code").order("block_code")
-      .range(offset, offset + 999);
-    if (result.error) throw new Error("历史板块归属查询失败，跌停股票已归入未分类");
-    const page = z.array(membershipSchema).parse(result.data);
-    memberships.push(...page);
-    // 已找到所有股票的最近记录；读完最后日期才能保留全部同日板块。
-    const latestDates = new Map<string, string>();
-    for (const row of memberships) {
-      if (!latestDates.has(row.stock_code)) latestDates.set(row.stock_code, row.date);
+    const result = await client.from("custom_blocks").select("id,name")
+      .eq("username", username).order("id").range(offset, offset + 999);
+    if (result.error) throw new Error("自定义板块查询失败，请刷新重试");
+    const page = z.array(blockSchema).parse(result.data);
+    blocks.push(...page);
+    if (page.length < 1000) break;
+  }
+  const memberships: RotationMembership[] = [];
+  const names = new Map(blocks.map((block) => [block.id, block.name]));
+  const stockMembershipSchema = z.object({ custom_block_id: z.number(), stock_code: z.string() });
+  // 分批查询，并分页读取，避免股票关联超过数据库默认返回上限。
+  for (let start = 0; start < blocks.length; start += 100) {
+    const ids = blocks.slice(start, start + 100).map((block) => block.id);
+    for (let offset = 0; ; offset += 1000) {
+      const result = await client.from("custom_block_stocks").select("custom_block_id,stock_code")
+        .in("custom_block_id", ids).order("custom_block_id").order("stock_code")
+        .range(offset, offset + 999);
+      if (result.error) throw new Error("自定义板块股票归属查询失败，请刷新重试");
+      const page = z.array(stockMembershipSchema).parse(result.data);
+      for (const row of page) {
+        const name = names.get(row.custom_block_id);
+        if (name !== undefined) memberships.push({
+          stock_code: row.stock_code, block_code: `custom-${row.custom_block_id}`, block_name: name,
+        });
+      }
+      if (page.length < 1000) break;
     }
-    const oldestLatest = [...latestDates.values()].sort()[0];
-    if (page.length < 1000 || (latestDates.size === codes.length && page[page.length - 1].date < oldestLatest)) break;
   }
   return memberships;
 }
@@ -166,15 +174,8 @@ export function loadRotationDay(date: string, today: string): Promise<DayResult>
     const [up, down] = await Promise.allSettled([loadUp(date, client), loadDownStocks(date)]);
     if (up.status === "rejected") throw new Error(`${date} 涨停行情获取失败，请重试`);
     const warnings: string[] = [];
-    let downBlocks: RotationBlock[] = [];
-    if (down.status === "fulfilled") {
-      try {
-        downBlocks = groupDownStocks(down.value, await loadMemberships(date, down.value, client));
-      } catch (error: unknown) {
-        warnings.push(error instanceof Error ? error.message : "板块归属查询失败");
-        downBlocks = groupDownStocks(down.value, []);
-      }
-    } else {
+    const downBlocks = down.status === "fulfilled" ? groupRotationStocks(down.value, []) : [];
+    if (down.status === "rejected") {
       warnings.push(`${date} 跌停行情获取失败，可点击刷新重试`);
     }
     return { day: { date, up: up.value, down: downBlocks, downAvailable: down.status === "fulfilled" }, warnings };
