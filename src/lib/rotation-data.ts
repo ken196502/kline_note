@@ -127,8 +127,10 @@ export function groupRotationStocks(
   return rankRotationBlocks([...groups.values()]);
 }
 
-export async function loadCustomMemberships(username: string) {
-  const client = getSupabaseClient();
+export async function loadCustomMemberships(
+  username: string, startDate: string, endDate: string,
+  client: SupabaseClient = getSupabaseClient(),
+): Promise<Map<string, RotationMembership[]>> {
   const blocks: { id: number; name: string }[] = [];
   const blockSchema = z.object({ id: z.number(), name: z.string() });
   for (let offset = 0; ; offset += 1000) {
@@ -139,28 +141,48 @@ export async function loadCustomMemberships(username: string) {
     blocks.push(...page);
     if (page.length < 1000) break;
   }
-  const memberships: RotationMembership[] = [];
+  const membershipsByDate = new Map<string, RotationMembership[]>();
   const names = new Map(blocks.map((block) => [block.id, block.name]));
-  const stockMembershipSchema = z.object({ custom_block_id: z.number(), stock_code: z.string() });
-  // 分批查询，并分页读取，避免股票关联超过数据库默认返回上限。
-  for (let start = 0; start < blocks.length; start += 100) {
-    const ids = blocks.slice(start, start + 100).map((block) => block.id);
+  if (blocks.length === 0) return membershipsByDate;
+
+  const dateSchema = z.object({ id: z.number(), date: z.string(), custom_block_id: z.number() });
+  const dates: z.infer<typeof dateSchema>[] = [];
+  for (let offset = 0; ; offset += 1000) {
+    const result = await client.from("custom_dates").select("id,date,custom_block_id")
+      .eq("username", username).gte("date", startDate).lte("date", endDate)
+      .order("id").range(offset, offset + 999);
+    if (result.error) throw new Error("自定义板块日期查询失败，请刷新重试");
+    const page = z.array(dateSchema).parse(result.data);
+    dates.push(...page.filter((row) => names.has(row.custom_block_id)));
+    if (page.length < 1000) break;
+  }
+
+  const datesById = new Map(dates.map((row) => [row.id, row]));
+  const stockMembershipSchema = z.object({ custom_date_id: z.number(), stock_code: z.string() });
+  // 使用与 /my 相同的日期股票表，分批并分页读取完整关联。
+  for (let start = 0; start < dates.length; start += 100) {
+    const ids = dates.slice(start, start + 100).map((row) => row.id);
     for (let offset = 0; ; offset += 1000) {
-      const result = await client.from("custom_block_stocks").select("custom_block_id,stock_code")
-        .in("custom_block_id", ids).order("custom_block_id").order("stock_code")
+      const result = await client.from("custom_date_stocks").select("custom_date_id,stock_code")
+        .in("custom_date_id", ids).order("custom_date_id").order("stock_code")
         .range(offset, offset + 999);
-      if (result.error) throw new Error("自定义板块股票归属查询失败，请刷新重试");
+      if (result.error) throw new Error("自定义日期股票归属查询失败，请刷新重试");
       const page = z.array(stockMembershipSchema).parse(result.data);
       for (const row of page) {
-        const name = names.get(row.custom_block_id);
-        if (name !== undefined) memberships.push({
-          stock_code: row.stock_code, block_code: `custom-${row.custom_block_id}`, block_name: name,
+        const customDate = datesById.get(row.custom_date_id);
+        if (!customDate) continue;
+        const name = names.get(customDate.custom_block_id);
+        if (name === undefined) continue;
+        const memberships = membershipsByDate.get(customDate.date) ?? [];
+        memberships.push({
+          stock_code: row.stock_code, block_code: `custom-${customDate.custom_block_id}`, block_name: name,
         });
+        membershipsByDate.set(customDate.date, memberships);
       }
       if (page.length < 1000) break;
     }
   }
-  return memberships;
+  return membershipsByDate;
 }
 
 interface DayResult { day: RotationDay; warnings: string[] }

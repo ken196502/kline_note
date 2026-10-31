@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { rankRotationBlocks, rankRotationStocks, shiftRotationDate } from "../src/lib/rotation";
-import { groupRotationStocks } from "../src/lib/rotation-data";
+import { createClient } from "@supabase/supabase-js";
+import { groupRotationStocks, loadCustomMemberships } from "../src/lib/rotation-data";
 import type { RotationStock } from "../src/types/rotation";
 import { indexChangeRate } from "../src/lib/rotation-index";
 
@@ -42,4 +43,43 @@ test("涨跌停采用全部自定义板块归属，重复记录不重复计数�
 test("历史游标跨月与闰年日期正确，不重复最后交易日", () => {
   assert.equal(shiftRotationDate("2026-11-01", -1), "2026-10-31");
   assert.equal(shiftRotationDate("2024-03-01", -1), "2024-02-29");
+});
+
+
+test("轮动读取 /my 日期内股票，同一股票不同日期采用各自板块", async () => {
+  const requests: URL[] = [];
+  const client = createClient("https://rotation-test.invalid", "test-key", {
+    auth: { persistSession: false, autoRefreshToken: false },
+    global: { fetch: async (input) => {
+      const url = new URL(input instanceof Request ? input.url : String(input));
+      requests.push(url);
+      switch (url.pathname.split("/").pop()) {
+        case "custom_blocks":
+          assert.equal(url.searchParams.get("username"), "eq.test-user");
+          return Response.json([{ id: 1, name: "板块A" }, { id: 2, name: "板块B" }]);
+        case "custom_dates":
+          assert.equal(url.searchParams.get("username"), "eq.test-user");
+          assert.deepEqual(url.searchParams.getAll("date"), ["gte.2026-10-26", "lte.2026-10-28"]);
+          return Response.json([
+            { id: 11, date: "2026-10-26", custom_block_id: 1 },
+            { id: 12, date: "2026-10-28", custom_block_id: 2 },
+            { id: 13, date: "2026-10-28", custom_block_id: 1 },
+          ]);
+        case "custom_date_stocks":
+          assert.equal(url.searchParams.get("custom_date_id"), "in.(11,12,13)");
+          return Response.json([
+            { custom_date_id: 11, stock_code: "000001" },
+            { custom_date_id: 12, stock_code: "000001" },
+            { custom_date_id: 13, stock_code: "000001" },
+          ]);
+        default: throw new Error(`Unexpected table: ${url.pathname}`);
+      }
+    } },
+  });
+  const memberships = await loadCustomMemberships("test-user", "2026-10-26", "2026-10-28", client);
+  const groupsFor = (date: string) => groupRotationStocks([stock("000001", 2)], memberships.get(date) ?? []);
+  assert.deepEqual(groupsFor("2026-10-26").map((block) => block.name), ["板块A"]);
+  assert.deepEqual(groupsFor("2026-10-28").map((block) => block.name), ["板块A", "板块B"]);
+  assert.deepEqual(groupsFor("2026-10-27").map((block) => block.name), ["未分类"]);
+  assert.equal(requests.length, 3);
 });

@@ -22,11 +22,12 @@ export async function GET(request: NextRequest) {
   let date = startDate;
   // 有限扫描，跳过周末和无行情的休市日期，防止上游无数据时无限请求。
   try {
-    const memberships = await loadCustomMemberships(username);
+    const membershipsByDate = await loadCustomMemberships(username, shiftRotationDate(startDate, -19), startDate);
     for (let scanned = 0; scanned < 20 && data.length < count; scanned++) {
       const weekday = new Date(`${date}T00:00:00Z`).getUTCDay();
       if (weekday !== 0 && weekday !== 6) {
         const result = await loadRotationDay(date, today);
+        const memberships = membershipsByDate.get(date) ?? [];
         result.warnings.forEach((warning) => warnings.add(warning));
         if (result.day.up.length > 0 || result.day.down.length > 0) data.push({
           ...result.day,
