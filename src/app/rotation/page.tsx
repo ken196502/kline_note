@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { ArrowLeftRight, Loader2, RefreshCw, MoveHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Checkbox } from "@/components/ui/checkbox";
 import { RotationChart } from "@/components/rotation-chart";
 import { RotationRanking } from "@/components/rotation-ranking";
 import { RotationStockComparison } from "@/components/rotation-stock-comparison";
@@ -12,6 +13,11 @@ import { useAuth } from "@/hooks/use-auth";
 import { allocateComparisonColor } from "@/lib/stock-comparison";
 import { cn } from "@/lib/utils";
 import type { RotationComparisonStock, RotationDay, RotationResponse, RotationSelection, RotationStock } from "@/types/rotation";
+
+const marketIndices: RotationStock[] = [
+  { code: "sh000001", name: "上证指数", changeRate: 0, continueNum: null },
+  { code: "sz399006", name: "创业板指数", changeRate: 0, continueNum: null },
+];
 
 export default function RotationPage() {
   const router = useRouter();
@@ -159,6 +165,29 @@ export default function RotationPage() {
             </footer>
           </div>
           <RotationRanking selection={downSelection} direction="down" loading={pending} checkedStocks={checkedStocks} onToggleStock={handleToggleStock} onPrimaryStock={handlePrimaryStock} />
+          <section aria-label="指数对比" className="flex shrink-0 items-center gap-4 overflow-x-auto border-t border-slate-200 bg-white px-4 py-3 text-xs sm:gap-6">
+            <span className="shrink-0 text-slate-400">指数</span>
+            {marketIndices.map((index) => {
+              const checked = checkedStocks.find((stock) => stock.code === index.code);
+              return <div key={index.code} className="flex shrink-0 items-center gap-2">
+                <Checkbox
+                  aria-label={`对比${index.name}`}
+                  checked={Boolean(checked)}
+                  onCheckedChange={(value) => handleToggleStock(index, value === true)}
+                />
+                <button
+                  type="button"
+                  aria-label={`设为主图${index.name}`}
+                  aria-pressed={checkedStocks[0]?.code === index.code}
+                  onClick={() => handlePrimaryStock(index)}
+                  className={cn("flex items-center gap-1.5 rounded-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-400", checkedStocks[0]?.code === index.code ? "text-orange-600" : "text-slate-700")}
+                >
+                  {checked && <span aria-hidden="true" className="size-2 rounded-full" style={{ backgroundColor: checked.color }} />}
+                  {index.name}
+                </button>
+              </div>;
+            })}
+          </section>
         </div>
         <RotationStockComparison stocks={checkedStocks} open={comparisonOpen} onOpenChange={setComparisonOpen} />
       </div>

@@ -2,6 +2,7 @@ import { z } from "zod";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getSupabaseClient } from "@/storage/database/supabase-client";
 import { rankRotationBlocks, rankRotationStocks } from "@/lib/rotation";
+import { loadShanghaiChangeRate } from "@/lib/rotation-index";
 import type { RotationBlock, RotationDay, RotationStock } from "@/types/rotation";
 
 const stockSchema = z.object({
@@ -171,14 +172,25 @@ export function loadRotationDay(date: string, today: string): Promise<DayResult>
   const result = (async (): Promise<DayResult> => {
     let client: SupabaseClient | null = null;
     try { client = getSupabaseClient(); } catch { /* 没有数据库配置时仍可展示 API 行情。 */ }
-    const [up, down] = await Promise.allSettled([loadUp(date, client), loadDownStocks(date)]);
+    const [up, down, index] = await Promise.allSettled([loadUp(date, client), loadDownStocks(date), loadShanghaiChangeRate(date)]);
     if (up.status === "rejected") throw new Error(`${date} 涨停行情获取失败，请重试`);
     const warnings: string[] = [];
+    const indexRate = index.status === "fulfilled" ? index.value : null;
+    if (indexRate === null && (up.value.length > 0 || (down.status === "fulfilled" && down.value.length > 0))) {
+      warnings.push(`${date} 上证指数行情缺失，日异动值暂不可用`);
+    }
+    const withAbnormalValue = (blocks: RotationBlock[]): RotationBlock[] => blocks.map((block) => ({
+      ...block,
+      stocks: block.stocks.map((stock) => ({
+        ...stock,
+        dailyAbnormalValue: indexRate === null ? null : Math.round((stock.changeRate - indexRate) * 100) / 100,
+      })),
+    }));
     const downBlocks = down.status === "fulfilled" ? groupRotationStocks(down.value, []) : [];
     if (down.status === "rejected") {
       warnings.push(`${date} 跌停行情获取失败，可点击刷新重试`);
     }
-    return { day: { date, up: up.value, down: downBlocks, downAvailable: down.status === "fulfilled" }, warnings };
+    return { day: { date, up: withAbnormalValue(up.value), down: withAbnormalValue(downBlocks), downAvailable: down.status === "fulfilled" }, warnings };
   })();
   cache.set(date, { expires: Date.now() + (date === today ? 30_000 : 3_600_000), result });
   // 不缓存失败或缺失的跌停数据，刷新即可重试。

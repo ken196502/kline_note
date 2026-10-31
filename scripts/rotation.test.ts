@@ -3,6 +3,16 @@ import { test } from "node:test";
 import { rankRotationBlocks, rankRotationStocks, shiftRotationDate } from "../src/lib/rotation";
 import { groupRotationStocks } from "../src/lib/rotation-data";
 import type { RotationStock } from "../src/types/rotation";
+import { indexChangeRate } from "../src/lib/rotation-index";
+
+test("指数涨幅使用对应交易日和前一交易日收盘，缺失时不使用其他日期", () => {
+  const rows = [["2026-10-26", "", "3030"], ["2026-10-23", "", "3000"], ["2026-10-27", "", "2999.7"]];
+  assert.equal(indexChangeRate(rows, "2026-10-26"), 1);
+  assert.equal(indexChangeRate(rows, "2026-10-27"), -1);
+  assert.equal(indexChangeRate(rows, "2026-10-25"), null);
+  assert.equal(indexChangeRate(rows, "2026-10-23"), null);
+  assert.equal(indexChangeRate([["2026-10-23", "", "0"], ["2026-10-26", "", "3030"]], "2026-10-26"), null);
+});
 
 const stock = (code: string, continueNum: number | null): RotationStock => ({ code, name: code, continueNum, changeRate: -10 });
 

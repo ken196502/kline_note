@@ -206,7 +206,7 @@ export function RotationStockComparison({ stocks, open, onOpenChange }: Comparis
     for (const stock of stocks) {
       if (cacheRef.current.has(stock.code)) continue;
       setData((previous) => ({ ...previous, [stock.code]: { candles: [], minutes: [], candlePending: true, minutePending: true } }));
-      const symbol = `${stock.code.startsWith("6") ? "sh" : "sz"}${stock.code}`;
+      const symbol = /^(sh|sz)/.test(stock.code) ? stock.code : `${stock.code.startsWith("6") ? "sh" : "sz"}${stock.code}`;
       const fetchCandles = async (): Promise<ComparisonCandle[]> => {
         const response = await fetch(`/api/kline?${new URLSearchParams({ symbol, limit: "120" })}`, { signal });
         if (!response.ok) throw new Error("K线获取失败");
@@ -215,7 +215,7 @@ export function RotationStockComparison({ stocks, open, onOpenChange }: Comparis
         return result.klines;
       };
       const fetchMinutes = async (): Promise<(number | null)[]> => {
-        const response = await fetch(`/api/time-preview?${new URLSearchParams({ code: stock.code, marketType: stock.code.startsWith("6") ? "SH" : "SZ" })}`, { signal });
+        const response = await fetch(`/api/time-preview?${new URLSearchParams({ code: symbol })}`, { signal });
         if (!response.ok) throw new Error("分时获取失败");
         const result: { success: boolean; data?: { prices: (number | null)[]; prevClose: number } } = await response.json();
         if (!result.success || !result.data?.prices.length) throw new Error("暂无分时数据");

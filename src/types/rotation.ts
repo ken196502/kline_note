@@ -4,6 +4,7 @@ export interface RotationStock {
   code: string;
   name: string;
   changeRate: number;
+  dailyAbnormalValue?: number | null;
   continueNum: number | null;
 }
 

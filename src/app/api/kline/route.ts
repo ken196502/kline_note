@@ -361,7 +361,7 @@ export async function GET(request: NextRequest) {
   }
 
   // 获取K线成功后，异步更新近一个月的价格到 stock_daily_price 表
-  if (klines.length > 0) {
+  if (klines.length > 0 && symbol !== "sh000001" && symbol !== "sz399006") {
     upsertRecentPrices(code, klines).catch((err) => {
       console.error("更新日K价格到stock_daily_price失败:", err);
     });

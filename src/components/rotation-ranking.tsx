@@ -27,7 +27,7 @@ export function RotationRanking({ selection, direction, loading, checkedStocks, 
           <span className="text-[10px] text-slate-400">当日连板数降序 · 移开保留</span>
         </div>
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      <div className="min-h-0 flex-1 overflow-auto">
         {loading && !selection ? <div className="space-y-1">{Array.from({ length: 3 }, (_, index) => <Skeleton key={index} className="h-7 rounded" />)}</div> : selection ?
           selection.block.stocks.length === 0 ? <p className="py-4 text-xs text-slate-400">个股明细暂未获取</p> :
             <ol className="divide-y divide-slate-100">
@@ -62,6 +62,14 @@ export function RotationRanking({ selection, direction, loading, checkedStocks, 
                     <span className="hidden w-14 shrink-0 font-mono text-[10px] text-slate-400 sm:inline">{stock.code}</span>
                     <span className={cn("w-24 shrink-0 text-[10px] font-semibold", up ? "text-red-600" : "text-emerald-700")}>{stock.continueNum === null ? "暂无连板数据" : stock.continueNum <= 1 ? "首板" : `${stock.continueNum}连板`}</span>
                     <span className={cn("shrink-0 font-mono text-[10px]", stock.changeRate >= 0 ? "text-red-500" : "text-emerald-600")}>{stock.changeRate > 0 ? "+" : ""}{stock.changeRate.toFixed(2)}%</span>
+                    <span
+                      title="当日个股涨幅 − 当日上证指数涨幅（百分点）"
+                      className="shrink-0 whitespace-nowrap text-[10px] text-slate-400"
+                    >
+                      日异动值 <span className={cn("font-mono", stock.dailyAbnormalValue == null ? "text-slate-400" : stock.dailyAbnormalValue >= 0 ? "text-red-500" : "text-emerald-600")}>
+                        {stock.dailyAbnormalValue == null ? "暂无" : `${stock.dailyAbnormalValue > 0 ? "+" : ""}${stock.dailyAbnormalValue.toFixed(2)}`}
+                      </span>
+                    </span>
                   </button>
                 </li>
               ))}
