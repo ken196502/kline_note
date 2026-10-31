@@ -55,8 +55,18 @@ export function normalizeComparisonMinutes(prices: (number | null)[], prevClose:
     ? toPercent(price, prevClose) : null);
 }
 
-/** 主股票红涨绿跌；背景股票使用蓝灰色，阳线空心、阴线实心。 */
-export function comparisonCandleStyle(primary: boolean, up: boolean): { stroke: string; fill: string } {
-  const stroke = primary ? up ? "#E94040" : "#2DC08E" : "#7890a8";
+const MACARON_COLORS = ["#A9B7E8", "#E8A9BF", "#92CDBB", "#E5BE8E", "#C5A6DF", "#8FC7DC", "#C4CE91", "#DFAD9D"];
+
+export function allocateComparisonColor(usedColors: string[]): string {
+  const available = MACARON_COLORS.find((color) => !usedColors.includes(color));
+  if (available) return available;
+  let index = 0;
+  while (usedColors.includes(`hsl(${(index * 137.508) % 360} 55% 72%)`)) index += 1;
+  return `hsl(${(index * 137.508) % 360} 55% 72%)`;
+}
+
+/** 主股票红涨绿跌；叠加股票使用分配的颜色，阳线空心、阴线实心。 */
+export function comparisonCandleStyle(primary: boolean, up: boolean, color = "#A9B7E8"): { stroke: string; fill: string } {
+  const stroke = primary ? up ? "#E94040" : "#2DC08E" : color;
   return { stroke, fill: !primary && up ? "none" : stroke };
 }

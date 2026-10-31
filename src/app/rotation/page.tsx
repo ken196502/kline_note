@@ -9,8 +9,9 @@ import { RotationChart } from "@/components/rotation-chart";
 import { RotationRanking } from "@/components/rotation-ranking";
 import { RotationStockComparison } from "@/components/rotation-stock-comparison";
 import { useAuth } from "@/hooks/use-auth";
+import { allocateComparisonColor } from "@/lib/stock-comparison";
 import { cn } from "@/lib/utils";
-import type { RotationDay, RotationResponse, RotationSelection, RotationStock } from "@/types/rotation";
+import type { RotationComparisonStock, RotationDay, RotationResponse, RotationSelection, RotationStock } from "@/types/rotation";
 
 export default function RotationPage() {
   const router = useRouter();
@@ -19,7 +20,7 @@ export default function RotationPage() {
   const [selected, setSelected] = useState<RotationSelection | null>(null);
   const [upSelection, setUpSelection] = useState<RotationSelection | null>(null);
   const [downSelection, setDownSelection] = useState<RotationSelection | null>(null);
-  const [checkedStocks, setCheckedStocks] = useState<RotationStock[]>([]);
+  const [checkedStocks, setCheckedStocks] = useState<RotationComparisonStock[]>([]);
   const [comparisonOpen, setComparisonOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -28,6 +29,7 @@ export default function RotationPage() {
   const requestRef = useRef<AbortController | null>(null);
 
   const load = useCallback(async (startDate?: string) => {
+    if (startDate && requestRef.current) return;
     requestRef.current?.abort();
     const controller = new AbortController();
     requestRef.current = controller;
@@ -73,7 +75,10 @@ export default function RotationPage() {
     } catch (failure: unknown) {
       if (!controller.signal.aborted) setError(failure instanceof Error ? failure.message : "网络错误，请重试");
     } finally {
-      if (!controller.signal.aborted) setLoading(false);
+      if (requestRef.current === controller) {
+        requestRef.current = null;
+        setLoading(false);
+      }
     }
   }, []);
 
@@ -86,6 +91,10 @@ export default function RotationPage() {
 
   const pending = authLoading || loading;
 
+  const handleLoadMore = () => {
+    if (!pending && !error && nextDate) void load(nextDate);
+  };
+
   const handleSelect = (selection: RotationSelection) => {
     setSelected(selection);
     if (selection.direction === "up") setUpSelection(selection);
@@ -94,7 +103,7 @@ export default function RotationPage() {
 
   const handleToggleStock = (stock: RotationStock, checked: boolean) => {
     setCheckedStocks((previous) => checked
-      ? previous.some((item) => item.code === stock.code) ? previous : [...previous, stock]
+      ? previous.some((item) => item.code === stock.code) ? previous : [...previous, { ...stock, color: allocateComparisonColor(previous.map((item) => item.color)) }]
       : previous.filter((item) => item.code !== stock.code));
     if (checked && !window.matchMedia("(min-width: 1024px)").matches) setComparisonOpen(true);
   };
@@ -102,7 +111,7 @@ export default function RotationPage() {
   const handlePrimaryStock = (stock: RotationStock) => {
     setCheckedStocks((previous) => previous[0]?.code === stock.code
       ? previous
-      : [previous.find((item) => item.code === stock.code) ?? stock, ...previous.filter((item) => item.code !== stock.code)]);
+      : [previous.find((item) => item.code === stock.code) ?? { ...stock, color: allocateComparisonColor(previous.map((item) => item.color)) }, ...previous.filter((item) => item.code !== stock.code)]);
     if (!window.matchMedia("(min-width: 1024px)").matches) setComparisonOpen(true);
   };
 
@@ -126,7 +135,7 @@ export default function RotationPage() {
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
           <RotationRanking selection={upSelection} direction="up" loading={pending} checkedStocks={checkedStocks} onToggleStock={handleToggleStock} onPrimaryStock={handlePrimaryStock} />
 
-          <div className="flex min-h-0 flex-1 flex-col gap-3 p-3 sm:p-4">
+          <div className="flex min-h-0 flex-1 flex-col gap-2">
             <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 text-xs">
               <div className="flex items-center gap-4">
                 <span className="flex items-center gap-1.5 text-slate-600"><span className="size-2 rounded-sm bg-red-500" />涨停数</span>
@@ -139,8 +148,8 @@ export default function RotationPage() {
               <span>{error}</span><Button variant="ghost" size="sm" disabled={pending} onClick={() => void load(days.length > 0 ? nextDate ?? undefined : undefined)}>重试</Button>
             </div>}
             {warnings.length > 0 && <p role="status" className="shrink-0 text-xs text-amber-700">{warnings.join("；")}</p>}
-            {days.length > 0 ? <RotationChart days={days} selected={selected} onSelect={handleSelect} /> : pending ?
-              <Skeleton className="min-h-0 flex-1 rounded-xl" /> : <div className="flex flex-1 items-center justify-center rounded-xl border border-dashed border-slate-200 text-sm text-slate-400">{error ? "行情暂未加载" : "暂无交易日行情"}</div>}
+            {days.length > 0 ? <RotationChart days={days} selected={selected} onSelect={handleSelect} onLoadMore={handleLoadMore} /> : pending ?
+              <Skeleton className="min-h-0 flex-1 rounded-none" /> : <div className="flex flex-1 items-center justify-center text-sm text-slate-400">{error ? "行情暂未加载" : "暂无交易日行情"}</div>}
             <footer className="flex shrink-0 flex-wrap items-center justify-between gap-2">
               <p className="max-w-3xl text-[10px] leading-relaxed text-slate-400">同花顺数据；跌停按截至当日最近一次历史板块归属，未匹配归入未分类；多板块股票分别计数。未提供的连板数排在末尾。</p>
               <Button variant="outline" size="sm" disabled={pending || !nextDate} onClick={() => { if (nextDate) void load(nextDate); }}>
@@ -151,7 +160,7 @@ export default function RotationPage() {
           </div>
           <RotationRanking selection={downSelection} direction="down" loading={pending} checkedStocks={checkedStocks} onToggleStock={handleToggleStock} onPrimaryStock={handlePrimaryStock} />
         </div>
-        <RotationStockComparison stocks={checkedStocks} onRemove={(stock) => handleToggleStock(stock, false)} open={comparisonOpen} onOpenChange={setComparisonOpen} />
+        <RotationStockComparison stocks={checkedStocks} open={comparisonOpen} onOpenChange={setComparisonOpen} />
       </div>
     </main>
   );

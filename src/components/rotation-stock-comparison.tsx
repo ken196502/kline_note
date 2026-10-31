@@ -2,13 +2,13 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import { RefreshCw, X } from "lucide-react";
+import { RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { comparisonCandleStyle, normalizeComparisonCandles, normalizeComparisonMinutes } from "@/lib/stock-comparison";
 import type { ComparisonCandle } from "@/lib/stock-comparison";
-import type { RotationStock } from "@/types/rotation";
+import type { RotationComparisonStock } from "@/types/rotation";
 
 interface StockChartData {
   candles: ComparisonCandle[];
@@ -20,8 +20,7 @@ interface StockChartData {
 }
 
 interface ComparisonProps {
-  stocks: RotationStock[];
-  onRemove: (stock: RotationStock) => void;
+  stocks: RotationComparisonStock[];
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
@@ -96,7 +95,7 @@ function PercentPlot({ values, labels, render, onHover }: {
   );
 }
 
-function ComparisonCharts({ stocks, data }: { stocks: RotationStock[]; data: Record<string, StockChartData> }) {
+function ComparisonCharts({ stocks, data }: { stocks: RotationComparisonStock[]; data: Record<string, StockChartData> }) {
   const [candleHover, setCandleHover] = useState<number | null>(null);
   const [minuteHover, setMinuteHover] = useState<number | null>(null);
   const [visibleCount, setVisibleCount] = useState(120);
@@ -141,11 +140,11 @@ function ComparisonCharts({ stocks, data }: { stocks: RotationStock[]; data: Rec
         </div>
         <p className="shrink-0 px-3 text-[10px] text-slate-400">{normalized.baseDate ? `${normalized.baseDate} 各股收盘价 = 0%` : "共同起始交易日收盘价 = 0%"}</p>
         {dates.length ? <PercentPlot values={values} labels={candleLabels} onHover={setCandleHover} render={({ x, y, step }) =>
-          [...candles].reverse().map((series) => <g key={series.code} data-candle-series={series.code} opacity={series.code === primaryCode ? 1 : 0.65}>
+          [...candles].reverse().map((series) => <g key={series.code} data-candle-series={series.code} opacity={1}>
             {series.candles.map((candle) => {
               const index = dateIndex.get(candle.date)!;
               const primary = series.code === primaryCode;
-              const style = comparisonCandleStyle(primary, candle.close >= candle.open);
+              const style = comparisonCandleStyle(primary, candle.close >= candle.open, stocks.find((stock) => stock.code === series.code)?.color);
               const bodyWidth = Math.max(1, Math.min(primary ? 12 : 16, step * (primary ? 0.62 : 0.9)));
               const bodyTop = Math.min(y(candle.open), y(candle.close));
               const bodyBottom = Math.max(y(candle.open), y(candle.close));
@@ -179,9 +178,9 @@ function ComparisonCharts({ stocks, data }: { stocks: RotationStock[]; data: Rec
             });
             const last = series.values.findLast((value) => value !== null) ?? 0;
             const primary = series.code === primaryCode;
-            const color = primary ? last >= 0 ? "#E94040" : "#2DC08E" : "#7890a8";
+            const color = primary ? last >= 0 ? "#E94040" : "#2DC08E" : stocks.find((stock) => stock.code === series.code)?.color;
             const lastIndex = series.values.findLastIndex((value) => value !== null);
-            return <g key={series.code} data-minute-series={series.code} opacity={primary ? 1 : 0.65}>
+            return <g key={series.code} data-minute-series={series.code} opacity={1}>
               <path d={path} fill="none" stroke={color} strokeWidth={primary ? 2 : 1.5} />
               {lastIndex >= 0 && <circle cx={x(lastIndex)} cy={y(last)} r={primary ? 2 : 1.5} fill={color} />}
             </g>;
@@ -198,7 +197,7 @@ function ComparisonCharts({ stocks, data }: { stocks: RotationStock[]; data: Rec
   );
 }
 
-export function RotationStockComparison({ stocks, onRemove, open, onOpenChange }: ComparisonProps) {
+export function RotationStockComparison({ stocks, open, onOpenChange }: ComparisonProps) {
   const cacheRef = useRef(new Map<string, StockChartData>());
   const [data, setData] = useState<Record<string, StockChartData>>({});
   const [revision, setRevision] = useState(0);
@@ -267,14 +266,7 @@ export function RotationStockComparison({ stocks, onRemove, open, onOpenChange }
           cacheRef.current.clear(); setData({}); setRevision((value) => value + 1);
         }}><RefreshCw className="size-3" />刷新图表</Button>
       </div>
-      <div className="mt-1 flex max-h-24 flex-wrap gap-1 overflow-y-auto">
-        {stocks.map((stock, index) => <div key={stock.code} className={`flex items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] ${index === 0 ? "border-orange-200 bg-orange-50 text-orange-700" : "border-slate-200 bg-slate-50 text-slate-500"}`}>
-          <span>{index === 0 ? "主图" : "叠加"} · {stock.name}</span>
-          {(!data[stock.code] || data[stock.code].candlePending || data[stock.code].minutePending) && <RefreshCw className="size-2.5 animate-spin" />}
-          <button onClick={() => onRemove(stock)} aria-label={`取消对比${stock.name}`} className="rounded p-0.5 hover:bg-slate-200"><X className="size-3" /></button>
-        </div>)}
-      </div>
-      <p className="mt-1 text-[10px] text-slate-400">点击股票行切换红绿主图；叠加蓝灰色，阳线空心、阴线实心</p>
+      <p className="mt-1 text-[10px] text-slate-400">点击股票行切换红绿主图；叠加颜色对应榜单圆点，阳线空心、阴线实心</p>
       {stocks.some((stock) => data[stock.code]?.candleError || data[stock.code]?.minuteError) && <div role="status" className="mt-1 max-h-16 overflow-y-auto text-[10px] text-amber-700">
         {stocks.map((stock) => {
           const item = data[stock.code];

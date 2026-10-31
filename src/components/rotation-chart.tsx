@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { PointerEvent as ReactPointerEvent } from "react";
+import type { PointerEvent as ReactPointerEvent, UIEvent } from "react";
 import { cn } from "@/lib/utils";
 import type { RotationDay, RotationSelection } from "@/types/rotation";
 
@@ -9,15 +9,17 @@ interface RotationChartProps {
   days: RotationDay[];
   selected: RotationSelection | null;
   onSelect: (selection: RotationSelection) => void;
+  onLoadMore: () => void;
 }
 
 const LANE_WIDTH = 20;
 const BAR_WIDTH = 12;
 
-export function RotationChart({ days, selected, onSelect }: RotationChartProps) {
+export function RotationChart({ days, selected, onSelect, onLoadMore }: RotationChartProps) {
   const viewportRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{ pointerId: number; x: number; scroll: number; moved: boolean } | null>(null);
+  const scrollLeftRef = useRef(0);
   const [height, setHeight] = useState(420);
   const [dragging, setDragging] = useState(false);
   // 最近日期在左侧；加载历史时向右追加，保留当前浏览位置。
@@ -72,6 +74,15 @@ export function RotationChart({ days, selected, onSelect }: RotationChartProps) 
     if (!dragRef.current?.moved) onSelect(selection);
   };
 
+  const handleScroll = (event: UIEvent<HTMLDivElement>) => {
+    const viewport = event.currentTarget;
+    const movingToHistory = viewport.scrollLeft > scrollLeftRef.current;
+    scrollLeftRef.current = viewport.scrollLeft;
+    if (movingToHistory && viewport.scrollWidth - viewport.clientWidth - viewport.scrollLeft <= 120) {
+      onLoadMore();
+    }
+  };
+
   const startDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (event.pointerType === "touch" || event.button !== 0) return;
     dragRef.current = { pointerId: event.pointerId, x: event.clientX, scroll: event.currentTarget.scrollLeft, moved: false };
@@ -98,7 +109,7 @@ export function RotationChart({ days, selected, onSelect }: RotationChartProps) 
   };
 
   return (
-    <div ref={containerRef} className="flex min-h-0 flex-1 overflow-hidden rounded-xl border border-slate-200 bg-white">
+    <div ref={containerRef} className="flex min-h-0 flex-1 overflow-hidden bg-white">
       <div
         ref={viewportRef}
         role="region"
@@ -106,6 +117,7 @@ export function RotationChart({ days, selected, onSelect }: RotationChartProps) 
         tabIndex={0}
         className={cn("min-w-0 flex-1 overflow-x-auto overflow-y-hidden overscroll-x-contain select-none outline-none focus-visible:ring-2 focus-visible:ring-orange-400", dragging ? "cursor-grabbing" : "cursor-grab")}
         style={{ touchAction: "pan-x" }}
+        onScroll={handleScroll}
         onPointerDown={startDrag}
         onPointerMove={moveDrag}
         onPointerUp={stopDrag}

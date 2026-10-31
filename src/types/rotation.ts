@@ -7,6 +7,10 @@ export interface RotationStock {
   continueNum: number | null;
 }
 
+export interface RotationComparisonStock extends RotationStock {
+  color: string;
+}
+
 export interface RotationBlock {
   code: string;
   name: string;
